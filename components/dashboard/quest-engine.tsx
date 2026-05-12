@@ -40,7 +40,14 @@ const PERIODS: QuestPeriod[] = ["早朝", "晌午", "傍晚", "深夜"];
 
 const NONE_CITY = "__none__";
 
-export function QuestEngine({ className }: { className?: string }) {
+export function QuestEngine({
+  className,
+  embedInBottomSheet,
+}: {
+  className?: string;
+  /** 底栏全屏 Sheet：由外层统一纵向滚动，避免嵌套 Radix ScrollArea 在 iOS 上无法滑动 */
+  embedInBottomSheet?: boolean;
+}) {
   const cities = useMapStore((s) => s.cities);
   const quests = useQuestStore((s) => s.quests);
   const activeCityId = useQuestStore((s) => s.activeCityId);
@@ -133,10 +140,190 @@ export function QuestEngine({ className }: { className?: string }) {
     ? "选择主攻城池"
     : `${activeCity.name}${activeCity.alias?.trim() ? ` · ${activeCity.alias.trim()}` : ""}`;
 
+  const cityPickerListScrollClass =
+    "min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 py-2 [-webkit-overflow-scrolling:touch]";
+
+  const taskList = (
+    <div className="space-y-1 py-3 pr-3">
+      <div className="mx-2 mb-3 space-y-2 rounded-lg border border-imperial-gold/20 bg-slate-950/50 px-3 py-2.5">
+        <Label className="text-[11px] font-medium text-imperial-gold">主攻城池</Label>
+        {isLg ? (
+          <Select
+            value={activeCityId ?? NONE_CITY}
+            onValueChange={(v) => setActiveCityId(v === NONE_CITY ? null : v)}
+          >
+            <SelectTrigger className="h-11 min-h-[44px] border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100">
+              <SelectValue placeholder="选择城池" />
+            </SelectTrigger>
+            <SelectContent className="border-imperial-gold/20 bg-slate-950 text-slate-100">
+              <SelectItem value={NONE_CITY} className="text-slate-400">
+                （未选定）
+              </SelectItem>
+              {cities.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                  {c.alias?.trim() ? ` · ${c.alias.trim()}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 min-h-[44px] w-full justify-between border-imperial-gold/25 bg-slate-900/80 px-3 text-left text-sm text-slate-100 hover:bg-slate-900"
+              onClick={() => setCityDrawerOpen(true)}
+            >
+              <span className="truncate">{cityTriggerLabel}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">选城</span>
+            </Button>
+            <Sheet open={cityDrawerOpen} onOpenChange={setCityDrawerOpen}>
+              <SheetContent
+                side="bottom"
+                className="flex max-h-[min(70dvh,28rem)] flex-col gap-0 rounded-t-xl border-t border-imperial-gold/25 p-0"
+              >
+                <SheetHeader className="shrink-0 border-b border-border px-4 py-3 text-left">
+                  <SheetTitle className="text-base text-primary">选择主攻城池</SheetTitle>
+                </SheetHeader>
+                <div className={cityPickerListScrollClass}>
+                  <div className="flex flex-col gap-1 pb-4">
+                    <Button
+                      type="button"
+                      variant={!activeCityId ? "secondary" : "ghost"}
+                      className="h-12 min-h-[48px] w-full justify-start text-left text-muted-foreground"
+                      onClick={() => {
+                        setActiveCityId(null);
+                        setCityDrawerOpen(false);
+                      }}
+                    >
+                      （未选定）
+                    </Button>
+                    {cities.map((c) => {
+                      const selected = c.id === activeCityId;
+                      return (
+                        <Button
+                          key={c.id}
+                          type="button"
+                          variant={selected ? "secondary" : "ghost"}
+                          className={cn(
+                            "h-auto min-h-[48px] w-full flex-col items-start justify-center gap-0.5 py-2 text-left",
+                            selected && "border border-imperial-gold/40 bg-imperial-gold/10"
+                          )}
+                          onClick={() => {
+                            setActiveCityId(c.id);
+                            setCityDrawerOpen(false);
+                          }}
+                        >
+                          <span className="font-medium text-foreground">{c.name}</span>
+                          {c.alias?.trim() ? (
+                            <span className="text-xs text-muted-foreground">{c.alias.trim()}</span>
+                          ) : null}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </>
+        )}
+        {!activeCity && cities.length > 0 ? (
+          <p className="text-[11px] leading-snug text-amber-200/90">
+            请先选定主攻城池，方可勘合本城军机。
+          </p>
+        ) : null}
+        {cities.length === 0 ? (
+          <p className="text-[11px] text-slate-500">疆域暂无城池，请至造办处疆域司扩建。</p>
+        ) : null}
+      </div>
+
+      {curfew ? (
+        <div className="mx-2 space-y-3 rounded-lg border border-imperial-vermilion/50 bg-imperial-vermilion/10 p-4">
+          <p className="text-center text-sm font-medium text-imperial-vermilion">宵禁：龙体危殆，军机停摆</p>
+          <Button type="button" className="w-full bg-primary text-primary-foreground" onClick={onSleep}>
+            前往养心殿（睡觉）
+          </Button>
+        </div>
+      ) : quests.length === 0 ? (
+        <p className="px-3 py-8 text-center text-xs leading-relaxed text-muted-foreground">
+          暂无军机任务。请点击顶部「造办处」齿轮 → 枢密院 → 新增任务。
+        </p>
+      ) : !activeCity ? (
+        <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+          点卯前请先于上方选择主攻城池。
+        </p>
+      ) : (
+        periodsToShow.map((period) => {
+          const list = byPeriod.get(period) ?? [];
+          if (!list.length) return null;
+          return (
+            <div key={period} className="space-y-2 pb-2">
+              <div className="flex items-center gap-2 px-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-imperial-gold">
+                  {period}
+                </span>
+                <Separator className="flex-1 bg-border/80" />
+              </div>
+              <ul className="space-y-1">
+                {list.map((q) => {
+                  const rowDisabled = isTaskRowDisabled(q);
+                  const done = cityDone(q);
+                  return (
+                    <li key={q.id}>
+                      <div
+                        className={cn(
+                          "flex items-start gap-3 rounded-md px-2 py-2 transition-colors",
+                          rowDisabled
+                            ? "cursor-not-allowed opacity-50"
+                            : "cursor-pointer hover:bg-muted/50",
+                          done && !rowDisabled && "opacity-75"
+                        )}
+                      >
+                        <Checkbox
+                          id={q.id}
+                          checked={done}
+                          disabled={rowDisabled}
+                          onCheckedChange={(v) => handleCheckedChange(q, v)}
+                          className="mt-0.5 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+                        />
+                        <Label
+                          htmlFor={q.id}
+                          className={cn(
+                            "flex flex-1 flex-col gap-0.5 text-sm font-normal leading-snug",
+                            rowDisabled && "cursor-not-allowed",
+                            !rowDisabled && "cursor-pointer",
+                            done &&
+                              "text-muted-foreground line-through decoration-muted-foreground/80"
+                          )}
+                        >
+                          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span>{q.title}</span>
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-imperial-gold/90 no-underline">
+                              {done ? "本城已办" : "本城未办"}
+                            </span>
+                          </span>
+                          <span className="text-[10px] text-muted-foreground no-underline">
+                            功勋 +{q.expReward} · 体力 −{q.staminaCost}
+                          </span>
+                        </Label>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col border-border bg-card/40 lg:border-l-0",
+        "flex min-h-0 flex-col border-border bg-card/40 lg:border-l-0",
+        embedInBottomSheet ? "h-auto shrink-0" : "h-full",
         className
       )}
     >
@@ -154,197 +341,11 @@ export function QuestEngine({ className }: { className?: string }) {
         ) : null}
       </div>
 
-      <ScrollArea className="h-full min-h-0 flex-1 px-2">
-        <div className="space-y-1 py-3 pr-3">
-          <div className="mx-2 mb-3 space-y-2 rounded-lg border border-imperial-gold/20 bg-slate-950/50 px-3 py-2.5">
-            <Label className="text-[11px] font-medium text-imperial-gold">
-              主攻城池
-            </Label>
-            {isLg ? (
-              <Select
-                value={activeCityId ?? NONE_CITY}
-                onValueChange={(v) =>
-                  setActiveCityId(v === NONE_CITY ? null : v)
-                }
-              >
-                <SelectTrigger className="h-11 min-h-[44px] border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100">
-                  <SelectValue placeholder="选择城池" />
-                </SelectTrigger>
-                <SelectContent className="border-imperial-gold/20 bg-slate-950 text-slate-100">
-                  <SelectItem value={NONE_CITY} className="text-slate-400">
-                    （未选定）
-                  </SelectItem>
-                  {cities.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                      {c.alias?.trim() ? ` · ${c.alias.trim()}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 min-h-[44px] w-full justify-between border-imperial-gold/25 bg-slate-900/80 px-3 text-left text-sm text-slate-100 hover:bg-slate-900"
-                  onClick={() => setCityDrawerOpen(true)}
-                >
-                  <span className="truncate">{cityTriggerLabel}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">选城</span>
-                </Button>
-                <Sheet open={cityDrawerOpen} onOpenChange={setCityDrawerOpen}>
-                  <SheetContent
-                    side="bottom"
-                    className="flex max-h-[min(70dvh,28rem)] flex-col gap-0 rounded-t-xl border-t border-imperial-gold/25 p-0"
-                  >
-                    <SheetHeader className="shrink-0 border-b border-border px-4 py-3 text-left">
-                      <SheetTitle className="text-base text-primary">
-                        选择主攻城池
-                      </SheetTitle>
-                    </SheetHeader>
-                    <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-                      <div className="flex flex-col gap-1 pb-4">
-                        <Button
-                          type="button"
-                          variant={!activeCityId ? "secondary" : "ghost"}
-                          className="h-12 min-h-[48px] w-full justify-start text-left text-muted-foreground"
-                          onClick={() => {
-                            setActiveCityId(null);
-                            setCityDrawerOpen(false);
-                          }}
-                        >
-                          （未选定）
-                        </Button>
-                        {cities.map((c) => {
-                          const selected = c.id === activeCityId;
-                          return (
-                            <Button
-                              key={c.id}
-                              type="button"
-                              variant={selected ? "secondary" : "ghost"}
-                              className={cn(
-                                "h-auto min-h-[48px] w-full flex-col items-start justify-center gap-0.5 py-2 text-left",
-                                selected && "border border-imperial-gold/40 bg-imperial-gold/10"
-                              )}
-                              onClick={() => {
-                                setActiveCityId(c.id);
-                                setCityDrawerOpen(false);
-                              }}
-                            >
-                              <span className="font-medium text-foreground">{c.name}</span>
-                              {c.alias?.trim() ? (
-                                <span className="text-xs text-muted-foreground">
-                                  {c.alias.trim()}
-                                </span>
-                              ) : null}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              </>
-            )}
-            {!activeCity && cities.length > 0 ? (
-              <p className="text-[11px] leading-snug text-amber-200/90">
-                请先选定主攻城池，方可勘合本城军机。
-              </p>
-            ) : null}
-            {cities.length === 0 ? (
-              <p className="text-[11px] text-slate-500">
-                疆域暂无城池，请至造办处疆域司扩建。
-              </p>
-            ) : null}
-          </div>
-
-          {curfew ? (
-            <div className="mx-2 space-y-3 rounded-lg border border-imperial-vermilion/50 bg-imperial-vermilion/10 p-4">
-              <p className="text-center text-sm font-medium text-imperial-vermilion">
-                宵禁：龙体危殆，军机停摆
-              </p>
-              <Button
-                type="button"
-                className="w-full bg-primary text-primary-foreground"
-                onClick={onSleep}
-              >
-                前往养心殿（睡觉）
-              </Button>
-            </div>
-          ) : quests.length === 0 ? (
-            <p className="px-3 py-8 text-center text-xs leading-relaxed text-muted-foreground">
-              暂无军机任务。请点击顶部「造办处」齿轮 → 枢密院 → 新增任务。
-            </p>
-          ) : !activeCity ? (
-            <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
-              点卯前请先于上方选择主攻城池。
-            </p>
-          ) : (
-            periodsToShow.map((period) => {
-              const list = byPeriod.get(period) ?? [];
-              if (!list.length) return null;
-              return (
-                <div key={period} className="space-y-2 pb-2">
-                  <div className="flex items-center gap-2 px-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-imperial-gold">
-                      {period}
-                    </span>
-                    <Separator className="flex-1 bg-border/80" />
-                  </div>
-                  <ul className="space-y-1">
-                    {list.map((q) => {
-                      const rowDisabled = isTaskRowDisabled(q);
-                      const done = cityDone(q);
-                      return (
-                        <li key={q.id}>
-                          <div
-                            className={cn(
-                              "flex items-start gap-3 rounded-md px-2 py-2 transition-colors",
-                              rowDisabled
-                                ? "cursor-not-allowed opacity-50"
-                                : "cursor-pointer hover:bg-muted/50",
-                              done && !rowDisabled && "opacity-75"
-                            )}
-                          >
-                            <Checkbox
-                              id={q.id}
-                              checked={done}
-                              disabled={rowDisabled}
-                              onCheckedChange={(v) => handleCheckedChange(q, v)}
-                              className="mt-0.5 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
-                            />
-                            <Label
-                              htmlFor={q.id}
-                              className={cn(
-                                "flex flex-1 flex-col gap-0.5 text-sm font-normal leading-snug",
-                                rowDisabled && "cursor-not-allowed",
-                                !rowDisabled && "cursor-pointer",
-                                done &&
-                                  "text-muted-foreground line-through decoration-muted-foreground/80"
-                              )}
-                            >
-                              <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                                <span>{q.title}</span>
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-imperial-gold/90 no-underline">
-                                  {done ? "本城已办" : "本城未办"}
-                                </span>
-                              </span>
-                              <span className="text-[10px] text-muted-foreground no-underline">
-                                功勋 +{q.expReward} · 体力 −{q.staminaCost}
-                              </span>
-                            </Label>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </ScrollArea>
+      {embedInBottomSheet ? (
+        <div className="touch-pan-y px-2">{taskList}</div>
+      ) : (
+        <ScrollArea className="h-full min-h-0 flex-1 px-2">{taskList}</ScrollArea>
+      )}
       <ImperialPhysicianReview />
     </div>
   );

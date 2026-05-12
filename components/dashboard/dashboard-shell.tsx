@@ -67,17 +67,30 @@ export function DashboardShell() {
       <Sheet open={questOpen} onOpenChange={setQuestOpen}>
         <SheetContent
           side="bottom"
-          className="flex h-[min(90dvh,44rem)] flex-col border-t border-primary/20 p-0"
+          className="flex max-h-[min(92dvh,44rem)] flex-col gap-0 rounded-t-xl border-t border-primary/20 p-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         >
           <SheetHeader className="sr-only">
             <SheetTitle>军机处 · 养正司与内务府</SheetTitle>
           </SheetHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden sm:max-h-full sm:flex-row">
-            <QuestEngine className="min-h-0 flex-1 rounded-none border-0 sm:border-r sm:border-border/80" />
-            <div className="flex min-h-0 shrink-0 flex-col overflow-y-auto border-t border-border sm:max-w-[min(22rem,48vw)] sm:border-l sm:border-t-0 sm:border-border/80">
-              <InnerCourtCard className="shrink-0 rounded-none border-0 border-b border-border/80 shadow-none" />
-              <NeiwufuCabinet className="min-h-0 w-full shrink-0 rounded-none border-0 shadow-none sm:max-w-none sm:flex-1" />
-            </div>
+          <div
+            className="flex shrink-0 justify-center pt-3 pb-1"
+            aria-hidden
+          >
+            <div className="h-1 w-10 rounded-full bg-muted-foreground/35" />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y">
+            <QuestEngine
+              embedInBottomSheet
+              className="shrink-0 rounded-none border-0 border-b border-border/60"
+            />
+            <InnerCourtCard
+              embedInBottomSheet
+              className="shrink-0 rounded-none border-0 border-b border-border/80 shadow-none"
+            />
+            <NeiwufuCabinet
+              embedInBottomSheet
+              className="w-full shrink-0 rounded-none border-0 shadow-none"
+            />
           </div>
         </SheetContent>
       </Sheet>

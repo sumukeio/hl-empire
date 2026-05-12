@@ -23,7 +23,14 @@ function formatRemaining(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-export function NeiwufuCabinet({ className }: { className?: string }) {
+export function NeiwufuCabinet({
+  className,
+  embedInBottomSheet,
+}: {
+  className?: string;
+  /** 底栏全屏 Sheet：由外层统一纵向滚动，避免嵌套 overflow 在 H5 上无法滑动 */
+  embedInBottomSheet?: boolean;
+}) {
   const health = useEmperorStore((s) => s.health);
   const martialArts = useEmperorStore((s) => s.martialArts);
   const tokens = useEmperorStore((s) => s.tokens);
@@ -145,7 +152,14 @@ export function NeiwufuCabinet({ className }: { className?: string }) {
           </p>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
+        <div
+          className={cn(
+            "flex flex-col px-3 py-3",
+            embedInBottomSheet
+              ? "shrink-0 overflow-visible"
+              : "min-h-0 flex-1 overflow-y-auto"
+          )}
+        >
           <div className="flex flex-col space-y-4">
             <Card className="border-imperial-gold/35 bg-slate-950/45 shadow-sm">
               <CardHeader className="space-y-0.5 px-3 pb-2 pt-3">

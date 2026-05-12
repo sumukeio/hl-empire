@@ -56,7 +56,14 @@ function playPaperRippleSound() {
 
 type LocalToast = { tone: "ok" | "err"; text: string } | null;
 
-export function InnerCourtCard({ className }: { className?: string }) {
+export function InnerCourtCard({
+  className,
+  embedInBottomSheet,
+}: {
+  className?: string;
+  /** 底栏全屏 Sheet：由外层统一纵向滚动 */
+  embedInBottomSheet?: boolean;
+}) {
   const gold = useEmperorStore((s) => s.gold);
   const privateVault = useEmperorStore((s) => s.privateVault);
   const morale = useEmperorStore((s) => s.morale);
@@ -163,7 +170,14 @@ export function InnerCourtCard({ className }: { className?: string }) {
           </p>
         </CardHeader>
 
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2.5 py-3">
+        <CardContent
+          className={cn(
+            "flex flex-col gap-3 px-2.5 py-3",
+            embedInBottomSheet
+              ? "shrink-0 overflow-visible"
+              : "min-h-0 flex-1 overflow-y-auto"
+          )}
+        >
           {toast ? (
             <div
               role="status"
