@@ -8,10 +8,9 @@ import {
   EARLY_COURT_STAMINA_THRESHOLD,
   isEarlyCourtHours,
 } from "@/lib/imperial-vitals";
-import { useEmperorStore, useEventStore } from "@/store";
+import { useEmperorStore, useEventStore, usePrefsStore } from "@/store";
 
 const SESSION_CURFEW = "hanling-redline-curfew-log";
-const LS_MORNING = "hanling-redline-morning-stall";
 
 export function ImperialRedLineWatch() {
   const health = useEmperorStore((s) => s.health);
@@ -40,18 +39,10 @@ export function ImperialRedLineWatch() {
       if (stamina >= EARLY_COURT_STAMINA_THRESHOLD) return;
       if (!isEarlyCourtHours()) return;
       const day = todayKey();
-      const key = `${LS_MORNING}-${day}`;
-      try {
-        if (typeof window !== "undefined" && window.localStorage.getItem(key)) {
-          return;
-        }
-        addLog("体力不足 40，今日早朝停办。", "battle");
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(key, "1");
-        }
-      } catch {
-        addLog("体力不足 40，今日早朝停办。", "battle");
-      }
+      const prefs = usePrefsStore.getState();
+      if (prefs.redlineMorningStallLoggedDays[day]) return;
+      addLog("体力不足 40，今日早朝停办。", "battle");
+      prefs.markRedlineMorningStallLogged(day);
     };
 
     checkMorning();

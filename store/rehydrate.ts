@@ -3,6 +3,7 @@
 import { useEmperorStore } from "./emperor-store";
 import { useEventStore } from "./event-store";
 import { useMapStore } from "./map-store";
+import { usePrefsStore } from "./prefs-store";
 import { useQuestStore } from "./quest-store";
 
 /**
@@ -14,5 +15,6 @@ export function rehydrateAllStores(): Promise<void[]> {
     useMapStore.persist.rehydrate(),
     useQuestStore.persist.rehydrate(),
     useEventStore.persist.rehydrate(),
+    usePrefsStore.persist.rehydrate(),
   ]);
 }

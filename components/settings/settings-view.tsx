@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, LogOut, Plus, Trash2 } from "lucide-react";
 
 import {
   AlertDialog,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { parseBulkCityNamesFromText } from "@/lib/parse-bulk-city-names";
 import { EmpireArchivePanel } from "@/components/settings/empire-archive-panel";
@@ -53,6 +55,7 @@ const field =
   "border-slate-700/90 bg-slate-900/85 text-slate-100 placeholder:text-slate-500 focus-visible:border-imperial-gold/45 focus-visible:ring-imperial-gold/25";
 
 export function SettingsView() {
+  const router = useRouter();
   const cities = useMapStore((s) => s.cities);
   const addCity = useMapStore((s) => s.addCity);
   const bulkAddCities = useMapStore((s) => s.bulkAddCities);
@@ -194,6 +197,17 @@ export function SettingsView() {
     setQuestImportResultOpen(true);
   };
 
+  const onLogout = async () => {
+    try {
+      const supabase = createBrowserSupabaseClient();
+      await supabase.auth.signOut();
+    } catch {
+      // 未配置 Supabase 时仍退回登录页
+    }
+    router.replace("/login");
+    router.refresh();
+  };
+
   const onConfirmQuestBulkDelete = () => {
     const n = selectedQuestIds.length;
     if (n === 0) return;
@@ -222,6 +236,16 @@ export function SettingsView() {
               <ArrowLeft className="h-4 w-4" />
               回朝
             </Link>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2 border-border text-muted-foreground hover:bg-muted/30"
+            onClick={() => void onLogout()}
+          >
+            <LogOut className="h-4 w-4" />
+            退出登录
           </Button>
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold tracking-tight text-primary sm:text-xl">

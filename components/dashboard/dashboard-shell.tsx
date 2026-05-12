@@ -11,7 +11,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-import { EventLogDocket } from "./event-log-docket";
 import { ImperialRedLineWatch } from "./imperial-red-line-watch";
 import { NeiwufuCabinet } from "./neiwufu-cabinet";
 import { OracleBriefing } from "./oracle-briefing";
@@ -54,7 +53,7 @@ export function DashboardShell() {
         </aside>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-center border-t border-border bg-background/95 p-2 backdrop-blur-md lg:hidden">
+      <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-center border-t border-border bg-background/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
         <Button
           type="button"
           className="w-full max-w-md gap-2 bg-primary/90 text-primary-foreground hover:bg-primary"
@@ -82,8 +81,6 @@ export function DashboardShell() {
           </div>
         </SheetContent>
       </Sheet>
-
-      <EventLogDocket />
     </div>
   );
 }

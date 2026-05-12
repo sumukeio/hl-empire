@@ -1,9 +1,12 @@
 import type { City, EventLog, EventLogType, Quest } from "@/store/types";
 import { migrateCity } from "@/store/map-store";
 import { migrateQuest } from "@/store/quest-store";
+import type { PrefsState } from "@/store/prefs-store";
+import { parsePrefsJson } from "@/store/prefs-store";
 import { useEmperorStore } from "@/store/emperor-store";
 import { useEventStore } from "@/store/event-store";
 import { useMapStore } from "@/store/map-store";
+import { usePrefsStore } from "@/store/prefs-store";
 import { useQuestStore } from "@/store/quest-store";
 
 export const EMPIRE_BACKUP_VERSION = 1 as const;
@@ -45,6 +48,8 @@ export type EmpireBackupV1 = {
   map: { cities: City[] };
   quest: { quests: Quest[]; lastLoginDate: string; activeCityId: string | null };
   events: { logs: EventLog[] };
+  /** 可选：与 prefs_json 同形；旧密函可无此字段 */
+  prefs?: PrefsState;
 };
 
 const MAX_LOGS = 80;
@@ -88,6 +93,12 @@ export function collectEmpireBackup(): EmpireBackupV1 {
       activeCityId: useQuestStore.getState().activeCityId,
     },
     events: { logs: [...useEventStore.getState().logs] },
+    prefs: {
+      oracleFirstOrderJiebaoDate: usePrefsStore.getState().oracleFirstOrderJiebaoDate,
+      redlineMorningStallLoggedDays: {
+        ...usePrefsStore.getState().redlineMorningStallLoggedDays,
+      },
+    },
   };
 }
 
@@ -235,6 +246,8 @@ export function parseEmpireBackupJson(
     })
     .slice(0, MAX_LOGS);
 
+  const prefs = root.prefs !== undefined ? parsePrefsJson(root.prefs) : undefined;
+
   const data: EmpireBackupV1 = {
     version: EMPIRE_BACKUP_VERSION,
     exportedAt:
@@ -243,6 +256,7 @@ export function parseEmpireBackupJson(
     map: { cities },
     quest: { quests, lastLoginDate, activeCityId },
     events: { logs },
+    ...(prefs ? { prefs } : {}),
   };
   return { ok: true, data };
 }
@@ -260,4 +274,12 @@ export function applyEmpireBackup(data: EmpireBackupV1): void {
     activeCityId: data.quest.activeCityId ?? null,
   });
   useEventStore.setState({ logs: data.events.logs.slice(0, MAX_LOGS) });
+  if (data.prefs) {
+    usePrefsStore.setState({
+      oracleFirstOrderJiebaoDate: data.prefs.oracleFirstOrderJiebaoDate,
+      redlineMorningStallLoggedDays: {
+        ...data.prefs.redlineMorningStallLoggedDays,
+      },
+    });
+  }
 }

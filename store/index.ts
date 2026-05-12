@@ -9,6 +9,12 @@ export type { BulkAddCitiesResult } from "./map-store";
 export { useQuestStore, createDefaultQuests, createEmptyQuest } from "./quest-store";
 export type { BulkAddQuestsResult } from "./quest-store";
 export { useEventStore } from "./event-store";
+export {
+  usePrefsStore,
+  migrateLegacyPrefsFromLocalStorage,
+  parsePrefsJson,
+} from "./prefs-store";
+export type { PrefsState } from "./prefs-store";
 export type {
   City,
   CityPatch,

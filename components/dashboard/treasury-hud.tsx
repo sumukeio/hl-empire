@@ -1,21 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  Building2,
   Coins,
   Crown,
   Landmark,
-  Moon,
   Radio,
+  ScrollText,
   Settings,
   Shield,
   Sparkles,
 } from "lucide-react";
 
+import { EventLogPanel } from "@/components/dashboard/event-log-docket";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -93,6 +100,7 @@ export function TreasuryHUD() {
   const level = useEmperorStore((s) => s.level);
   const gold = useEmperorStore((s) => s.gold);
   const troops = useEmperorStore((s) => s.troops);
+  const [docketOpen, setDocketOpen] = useState(false);
 
   const honor = getImperialHonorific(exp);
 
@@ -101,13 +109,14 @@ export function TreasuryHUD() {
       <header
         className={cn(
           "sticky top-0 z-50 border-b border-border/80 bg-background/85 backdrop-blur-md",
-          "supports-[backdrop-filter]:bg-background/70"
+          "supports-[backdrop-filter]:bg-background/70",
+          "pt-[max(0.75rem,env(safe-area-inset-top))]"
         )}
       >
-        <div className="mx-auto max-w-[1600px] px-3 py-3 sm:px-4">
+        <div className="mx-auto max-w-[1600px] px-3 pb-3 pt-0 sm:px-4 sm:pb-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 text-primary">
+              <div className="flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 text-primary">
                 <Crown className="h-5 w-5" aria-hidden />
               </div>
               <div className="min-w-0">
@@ -131,16 +140,16 @@ export function TreasuryHUD() {
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
-              <div className="flex items-center gap-1.5 rounded-md border border-slate-800/90 bg-slate-950/50 px-2.5 py-1.5 text-sm">
-                <Coins className="h-4 w-4 text-imperial-gold" aria-hidden />
+              <div className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-slate-800/90 bg-slate-950/50 px-2.5 py-1.5 text-sm">
+                <Coins className="h-4 w-4 shrink-0 text-imperial-gold" aria-hidden />
                 <span className="tabular-nums text-foreground">
                   {gold.toLocaleString("zh-CN")}
                 </span>
                 <span className="text-xs text-muted-foreground">国库</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-md border border-slate-800/90 bg-slate-950/50 px-2.5 py-1.5 text-sm">
+              <div className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-slate-800/90 bg-slate-950/50 px-2.5 py-1.5 text-sm">
                 <Shield
-                  className="h-4 w-4 text-imperial-vermilion"
+                  className="h-4 w-4 shrink-0 text-imperial-vermilion"
                   aria-hidden
                 />
                 <span className="tabular-nums text-foreground">
@@ -148,13 +157,38 @@ export function TreasuryHUD() {
                 </span>
                 <span className="text-xs text-muted-foreground">军力</span>
               </div>
+
+              <Dialog open={docketOpen} onOpenChange={setDocketOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 border-imperial-vermilion/35 text-imperial-vermilion hover:bg-imperial-vermilion/10"
+                    aria-label="八百里加急（邸报）"
+                    title="八百里加急（邸报）"
+                  >
+                    <ScrollText className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[min(85dvh,32rem)] w-[min(24rem,calc(100vw-2rem))] max-w-lg gap-0 overflow-hidden p-0 sm:rounded-lg">
+                  <DialogHeader className="sr-only">
+                    <DialogTitle>八百里加急</DialogTitle>
+                    <DialogDescription>最近五条邸报与清空</DialogDescription>
+                  </DialogHeader>
+                  <div className="max-h-[min(85dvh,32rem)] overflow-y-auto p-4">
+                    <EventLogPanel className="border-0 shadow-none" />
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    className="h-9 w-9 shrink-0 border-imperial-gold/35 text-imperial-gold hover:bg-imperial-gold/10"
+                    className="h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 border-imperial-gold/35 text-imperial-gold hover:bg-imperial-gold/10"
                     asChild
                   >
                     <Link href="/settings" aria-label="造办处 (系统配置)">

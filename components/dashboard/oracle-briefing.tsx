@@ -8,9 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { todayKey } from "@/lib/today-key";
 import type { City } from "@/store/types";
-import { useEventStore, useMapStore } from "@/store";
+import { useEventStore, useMapStore, usePrefsStore } from "@/store";
 
-const FIRST_ORDER_LOG_KEY = "hanling-oracle-first-order-jiebao-date";
 const EFFICIENCY_WARN_THRESHOLD = 35;
 const CPA_RISK_THRESHOLD = 150;
 
@@ -61,9 +60,10 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
     try {
       const day = todayKey();
       if (typeof window === "undefined") return;
-      if (window.localStorage.getItem(FIRST_ORDER_LOG_KEY) === day) return;
+      const logged = usePrefsStore.getState().oracleFirstOrderJiebaoDate;
+      if (logged === day) return;
       addLog("捷报：帝国今日首个粮饷已入库", "treasury");
-      window.localStorage.setItem(FIRST_ORDER_LOG_KEY, day);
+      usePrefsStore.getState().setOracleFirstOrderJiebaoDate(day);
     } catch {
       addLog("捷报：帝国今日首个粮饷已入库", "treasury");
     }

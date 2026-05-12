@@ -13,8 +13,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { buildCourtDispatchDecree } from "@/lib/court-dispatch-log";
+import { useIsLgScreen } from "@/lib/use-is-lg";
 import { cn } from "@/lib/utils";
 import {
   isCurfewMode,
@@ -48,6 +55,8 @@ export function QuestEngine({ className }: { className?: string }) {
   const isNomadMode = useEmperorStore((s) => s.isNomadMode);
 
   const [clock, setClock] = useState(() => new Date());
+  const [cityDrawerOpen, setCityDrawerOpen] = useState(false);
+  const isLg = useIsLgScreen();
 
   const activeCity = useMemo(
     () => cities.find((c) => c.id === activeCityId) ?? null,
@@ -120,6 +129,10 @@ export function QuestEngine({ className }: { className?: string }) {
     addLog("养心殿：圣上安寝，龙体得养。", "treasury");
   };
 
+  const cityTriggerLabel = !activeCity
+    ? "选择主攻城池"
+    : `${activeCity.name}${activeCity.alias?.trim() ? ` · ${activeCity.alias.trim()}` : ""}`;
+
   return (
     <div
       className={cn(
@@ -147,27 +160,93 @@ export function QuestEngine({ className }: { className?: string }) {
             <Label className="text-[11px] font-medium text-imperial-gold">
               主攻城池
             </Label>
-            <Select
-              value={activeCityId ?? NONE_CITY}
-              onValueChange={(v) =>
-                setActiveCityId(v === NONE_CITY ? null : v)
-              }
-            >
-              <SelectTrigger className="h-9 border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100">
-                <SelectValue placeholder="选择城池" />
-              </SelectTrigger>
-              <SelectContent className="border-imperial-gold/20 bg-slate-950 text-slate-100">
-                <SelectItem value={NONE_CITY} className="text-slate-400">
-                  （未选定）
-                </SelectItem>
-                {cities.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                    {c.alias?.trim() ? ` · ${c.alias.trim()}` : ""}
+            {isLg ? (
+              <Select
+                value={activeCityId ?? NONE_CITY}
+                onValueChange={(v) =>
+                  setActiveCityId(v === NONE_CITY ? null : v)
+                }
+              >
+                <SelectTrigger className="h-11 min-h-[44px] border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100">
+                  <SelectValue placeholder="选择城池" />
+                </SelectTrigger>
+                <SelectContent className="border-imperial-gold/20 bg-slate-950 text-slate-100">
+                  <SelectItem value={NONE_CITY} className="text-slate-400">
+                    （未选定）
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  {cities.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                      {c.alias?.trim() ? ` · ${c.alias.trim()}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-h-[44px] w-full justify-between border-imperial-gold/25 bg-slate-900/80 px-3 text-left text-sm text-slate-100 hover:bg-slate-900"
+                  onClick={() => setCityDrawerOpen(true)}
+                >
+                  <span className="truncate">{cityTriggerLabel}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">选城</span>
+                </Button>
+                <Sheet open={cityDrawerOpen} onOpenChange={setCityDrawerOpen}>
+                  <SheetContent
+                    side="bottom"
+                    className="flex max-h-[min(70dvh,28rem)] flex-col gap-0 rounded-t-xl border-t border-imperial-gold/25 p-0"
+                  >
+                    <SheetHeader className="shrink-0 border-b border-border px-4 py-3 text-left">
+                      <SheetTitle className="text-base text-primary">
+                        选择主攻城池
+                      </SheetTitle>
+                    </SheetHeader>
+                    <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+                      <div className="flex flex-col gap-1 pb-4">
+                        <Button
+                          type="button"
+                          variant={!activeCityId ? "secondary" : "ghost"}
+                          className="h-12 min-h-[48px] w-full justify-start text-left text-muted-foreground"
+                          onClick={() => {
+                            setActiveCityId(null);
+                            setCityDrawerOpen(false);
+                          }}
+                        >
+                          （未选定）
+                        </Button>
+                        {cities.map((c) => {
+                          const selected = c.id === activeCityId;
+                          return (
+                            <Button
+                              key={c.id}
+                              type="button"
+                              variant={selected ? "secondary" : "ghost"}
+                              className={cn(
+                                "h-auto min-h-[48px] w-full flex-col items-start justify-center gap-0.5 py-2 text-left",
+                                selected && "border border-imperial-gold/40 bg-imperial-gold/10"
+                              )}
+                              onClick={() => {
+                                setActiveCityId(c.id);
+                                setCityDrawerOpen(false);
+                              }}
+                            >
+                              <span className="font-medium text-foreground">{c.name}</span>
+                              {c.alias?.trim() ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {c.alias.trim()}
+                                </span>
+                              ) : null}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              </>
+            )}
             {!activeCity && cities.length > 0 ? (
               <p className="text-[11px] leading-snug text-amber-200/90">
                 请先选定主攻城池，方可勘合本城军机。
