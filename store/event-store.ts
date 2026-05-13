@@ -35,7 +35,11 @@ export interface EventActions {
     type?: EventLogType,
     meta?: {
       cityName?: string;
-      emphasis?: "calamity" | "goldFlash" | "crimsonDecree";
+      emphasis?:
+        | "calamity"
+        | "goldFlash"
+        | "goldFlashLong"
+        | "crimsonDecree";
       revert?: EventLogRevert;
     }
   ) => void;

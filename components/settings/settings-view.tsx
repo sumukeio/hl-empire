@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, GripVertical, LogOut, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, GripVertical, LogOut, Plus, Trash2 } from "lucide-react";
 
 import {
   AlertDialog,
@@ -291,7 +291,19 @@ export function SettingsView() {
             <LogOut className="h-4 w-4" />
             退出登录
           </Button>
-          <div className="min-w-0 flex-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="order-last gap-2 border-imperial-gold/45 text-imperial-gold hover:bg-imperial-gold/10 sm:order-none"
+            asChild
+          >
+            <Link href="/settings/handbook">
+              <BookOpen className="h-4 w-4" />
+              帝国手册
+            </Link>
+          </Button>
+          <div className="min-w-0 flex-1 basis-full sm:basis-auto">
             <h1 className="text-lg font-semibold tracking-tight text-primary sm:text-xl">
               造办处
             </h1>

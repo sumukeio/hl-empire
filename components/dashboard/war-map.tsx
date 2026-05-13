@@ -432,7 +432,7 @@ export function WarMap({
                   </p>
                   <Button
                     type="button"
-                    className="w-full border-imperial-gold/50 bg-imperial-gold/15 text-imperial-gold hover:bg-imperial-gold/25"
+                    className="min-h-[44px] w-full border-imperial-gold/50 bg-imperial-gold/15 text-imperial-gold hover:bg-imperial-gold/25"
                     onClick={() => {
                       if (!active) return;
                       const r = submitCityReport(active.id, {
@@ -565,7 +565,7 @@ export function WarMap({
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-imperial-gold/15 bg-slate-950/95 px-6 py-4 backdrop-blur-sm">
+              <div className="shrink-0 border-t border-imperial-gold/15 bg-slate-950/95 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button
                     type="button"

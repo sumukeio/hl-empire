@@ -96,7 +96,11 @@ export interface EventLog {
   /** 邸报关联之城池（多为产品别名或城名）。 */
   cityName?: string;
   /** 邸报强调样式（如国难级红字闪烁）。 */
-  emphasis?: "calamity" | "goldFlash" | "crimsonDecree";
+  emphasis?:
+    | "calamity"
+    | "goldFlash"
+    | "goldFlashLong"
+    | "crimsonDecree";
   /** 存在时：用户可撤回本条邸报并尽量回滚关联游戏状态 */
   revert?: EventLogRevert;
 }

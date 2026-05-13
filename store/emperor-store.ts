@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { buildEmperorTitlePromotionMessage } from "@/lib/emperor-title";
+import {
+  analyzeTitlePromotionVisualFlags,
+  buildEmperorTitlePromotionMessage,
+  getEmperorTitleTierIndex,
+} from "@/lib/emperor-title";
 
 import { useEventStore } from "./event-store";
 import type {
@@ -26,10 +30,23 @@ function clamp(n: number, lo: number, hi: number): number {
 }
 
 function emitEmperorTitleTierPromotion(prevExp: number, nextExp: number) {
+  const prevIdx = getEmperorTitleTierIndex(prevExp);
+  const nextIdx = getEmperorTitleTierIndex(nextExp);
+  if (nextIdx <= prevIdx) return;
+  const { goldLong, crimsonZhengCong } = analyzeTitlePromotionVisualFlags(
+    prevIdx,
+    nextIdx
+  );
+  const addLog = useEventStore.getState().addLog;
+  if (goldLong) {
+    addLog("【天象】紫气东来，御案金光贯顶！", "treasury", {
+      emphasis: "goldFlashLong",
+    });
+  }
   const msg = buildEmperorTitlePromotionMessage(prevExp, nextExp);
   if (!msg) return;
-  useEventStore.getState().addLog(msg, "decree", {
-    emphasis: "crimsonDecree",
+  addLog(msg, "decree", {
+    emphasis: crimsonZhengCong ? "crimsonDecree" : "goldFlash",
   });
 }
 

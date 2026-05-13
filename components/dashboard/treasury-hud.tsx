@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { EventLogPanel } from "@/components/dashboard/event-log-docket";
+import { AscensionLadderDialog } from "@/components/dashboard/ascension-ladder-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -106,7 +107,7 @@ function EmpireBriefingStrip({ className }: { className?: string }) {
 }
 
 const vaultBtn =
-  "w-full border-imperial-gold/55 bg-imperial-gold/15 text-imperial-gold hover:bg-imperial-gold/28 hover:text-imperial-gold";
+  "min-h-[44px] w-full border-imperial-gold/55 bg-imperial-gold/15 text-imperial-gold hover:bg-imperial-gold/28 hover:text-imperial-gold";
 
 const PERSONAL_EXPENSE_CHIPS: {
   id: PersonalExpenseCategory;
@@ -120,7 +121,7 @@ const PERSONAL_EXPENSE_CHIPS: {
 ];
 
 const expenseChipBase =
-  "h-auto min-h-[40px] flex-1 border border-imperial-gold/45 bg-slate-900/60 px-2 py-2 text-[11px] font-medium text-imperial-gold/95 shadow-sm hover:bg-imperial-gold/10";
+  "h-auto min-h-[44px] flex-1 border border-imperial-gold/45 bg-slate-900/60 px-3 py-2 text-[11px] font-medium text-imperial-gold/95 shadow-sm hover:bg-imperial-gold/10 sm:min-h-[40px] sm:px-2";
 const expenseChipActive =
   "border-imperial-gold/70 bg-imperial-gold/15 shadow-md ring-2 ring-imperial-gold/40";
 
@@ -147,6 +148,7 @@ export function TreasuryHUD() {
   const [personalAmount, setPersonalAmount] = useState("");
   const [cornerstone, setCornerstone] = useState(false);
   const [travelDest, setTravelDest] = useState("");
+  const [ascensionOpen, setAscensionOpen] = useState(false);
 
   useEffect(() => {
     if (!vaultOpen) {
@@ -217,9 +219,19 @@ export function TreasuryHUD() {
         <div className="mx-auto max-w-[1600px] px-3 pb-3 pt-0 sm:px-4 sm:pb-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <div className="flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 text-primary">
+              <button
+                type="button"
+                onClick={() => setAscensionOpen(true)}
+                className={cn(
+                  "flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 text-primary transition-colors",
+                  "hover:border-imperial-gold/55 hover:bg-imperial-gold/15 hover:text-imperial-gold",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-imperial-gold/40"
+                )}
+                aria-label="打开万世基业图谱（十二阶位阶）"
+                title="万世基业图谱"
+              >
                 <Crown className="h-5 w-5" aria-hidden />
-              </div>
+              </button>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className="shrink-0 text-xs font-medium text-muted-foreground sm:text-sm">
@@ -282,7 +294,7 @@ export function TreasuryHUD() {
                   </span>
                   <span className="text-xs text-muted-foreground">💰 国库储蓄</span>
                 </button>
-                <DialogContent className="max-w-md border-imperial-gold/20 bg-slate-950 text-slate-100 sm:rounded-lg">
+                <DialogContent className="max-h-[min(92dvh,40rem)] w-[calc(100vw-1.25rem)] max-w-md overflow-y-auto border-imperial-gold/20 bg-slate-950 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-slate-100 sm:w-full sm:max-w-md sm:rounded-lg sm:p-6 sm:pb-6">
                   <DialogHeader>
                     <DialogTitle className="text-primary">户部司帑</DialogTitle>
                     <DialogDescription className="text-xs text-muted-foreground">
@@ -297,13 +309,13 @@ export function TreasuryHUD() {
                     <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-slate-800/90 bg-slate-900/80 p-1">
                       <TabsTrigger
                         value="ledger"
-                        className="text-xs data-[state=active]:bg-imperial-gold/20 data-[state=active]:text-imperial-gold data-[state=active]:shadow-md"
+                        className="min-h-[44px] text-xs data-[state=active]:bg-imperial-gold/20 data-[state=active]:text-imperial-gold data-[state=active]:shadow-md"
                       >
                         岁入与校准
                       </TabsTrigger>
                       <TabsTrigger
                         value="personal"
-                        className="text-xs data-[state=active]:bg-imperial-gold/20 data-[state=active]:text-imperial-gold data-[state=active]:shadow-md"
+                        className="min-h-[44px] text-xs data-[state=active]:bg-imperial-gold/20 data-[state=active]:text-imperial-gold data-[state=active]:shadow-md"
                       >
                         个人支用
                       </TabsTrigger>
@@ -510,7 +522,7 @@ export function TreasuryHUD() {
                   </span>
                   <span className="text-xs text-muted-foreground">军费余额</span>
                 </button>
-                <DialogContent className="max-w-md border-emerald-800/30 bg-slate-950 text-slate-100 sm:rounded-lg">
+                <DialogContent className="max-h-[min(92dvh,40rem)] w-[calc(100vw-1.25rem)] max-w-md overflow-y-auto border-emerald-800/30 bg-slate-950 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-slate-100 sm:w-full sm:max-w-md sm:rounded-lg sm:p-6 sm:pb-6">
                   <DialogHeader>
                     <DialogTitle className="text-emerald-400">拨付军费</DialogTitle>
                     <DialogDescription className="text-xs text-muted-foreground">
@@ -548,7 +560,7 @@ export function TreasuryHUD() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full border-emerald-600/55 bg-emerald-950/40 text-emerald-200 hover:bg-emerald-900/50 hover:text-emerald-50"
+                      className="min-h-[44px] w-full border-emerald-600/55 bg-emerald-950/40 text-emerald-200 hover:bg-emerald-900/50 hover:text-emerald-50"
                       onClick={() => {
                         const n = Math.max(
                           0,
@@ -688,6 +700,11 @@ export function TreasuryHUD() {
           </div>
         </div>
       </header>
+      <AscensionLadderDialog
+        open={ascensionOpen}
+        onOpenChange={setAscensionOpen}
+        exp={exp}
+      />
     </TooltipProvider>
   );
 }

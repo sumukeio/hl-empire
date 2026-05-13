@@ -22,7 +22,14 @@ function parseEventLogType(v: unknown): EventLogType {
 }
 
 function parseLogEmphasis(v: unknown): EventLog["emphasis"] | undefined {
-  if (v === "calamity" || v === "goldFlash" || v === "crimsonDecree") return v;
+  if (
+    v === "calamity" ||
+    v === "goldFlash" ||
+    v === "goldFlashLong" ||
+    v === "crimsonDecree"
+  ) {
+    return v;
+  }
   return undefined;
 }
 

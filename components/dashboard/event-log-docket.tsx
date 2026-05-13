@@ -167,6 +167,8 @@ export function EventLogPanel({ className }: EventLogPanelProps) {
                         "animate-pulse font-semibold text-imperial-vermilion",
                       log.emphasis === "goldFlash" &&
                         "animate-pulse font-medium text-imperial-gold",
+                      log.emphasis === "goldFlashLong" &&
+                        "animate-[pulse_2.8s_ease-in-out_infinite] font-semibold text-imperial-gold shadow-[0_0_20px_rgba(245,158,11,0.45)]",
                       log.emphasis === "crimsonDecree" &&
                         "rounded-md border border-red-600/70 bg-gradient-to-r from-red-950/95 via-red-900/80 to-red-950/95 px-2 py-1 font-bold tracking-wide text-red-100 shadow-[0_0_14px_rgba(220,38,38,0.35)] animate-pulse",
                       !log.emphasis && "text-foreground"
