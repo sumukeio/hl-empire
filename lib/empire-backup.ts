@@ -1,6 +1,9 @@
 import type { City, EventLog, EventLogType, Quest } from "@/store/types";
 import { migrateCity } from "@/store/map-store";
-import { migrateQuest } from "@/store/quest-store";
+import {
+  hydrateQuestSortOrderFromPersistOrder,
+  migrateQuest,
+} from "@/store/quest-store";
 import type { PrefsState } from "@/store/prefs-store";
 import { parsePrefsJson } from "@/store/prefs-store";
 import { useEmperorStore } from "@/store/emperor-store";
@@ -19,8 +22,38 @@ function parseEventLogType(v: unknown): EventLogType {
 }
 
 function parseLogEmphasis(v: unknown): EventLog["emphasis"] | undefined {
-  if (v === "calamity" || v === "goldFlash") return v;
+  if (v === "calamity" || v === "goldFlash" || v === "crimsonDecree") return v;
   return undefined;
+}
+
+function parseLogRevert(r: Record<string, unknown>): EventLog["revert"] | undefined {
+  const rev = r.revert;
+  if (!rev || typeof rev !== "object") return undefined;
+  const o = rev as Record<string, unknown>;
+  if (o.kind !== "quest_complete") return undefined;
+  const cityId = typeof o.cityId === "string" ? o.cityId : "";
+  const questId = typeof o.questId === "string" ? o.questId : "";
+  const staminaRestored =
+    typeof o.staminaRestored === "number" && Number.isFinite(o.staminaRestored)
+      ? Math.max(0, o.staminaRestored)
+      : 0;
+  const expSubtracted =
+    typeof o.expSubtracted === "number" && Number.isFinite(o.expSubtracted)
+      ? Math.max(0, o.expSubtracted)
+      : 0;
+  const tokensSubtracted =
+    typeof o.tokensSubtracted === "number" && Number.isFinite(o.tokensSubtracted)
+      ? Math.max(0, o.tokensSubtracted)
+      : 0;
+  if (!cityId || !questId) return undefined;
+  return {
+    kind: "quest_complete",
+    cityId,
+    questId,
+    staminaRestored,
+    expSubtracted,
+    tokensSubtracted,
+  };
 }
 
 export type EmpireBackupV1 = {
@@ -214,7 +247,9 @@ export function parseEmpireBackupJson(
   emperor.level = computeLevelFromExp(emperor.exp);
 
   const cities = (map as { cities: unknown[] }).cities.map((c) => migrateCity(c));
-  const quests = (quest as { quests: unknown[] }).quests.map((q) => migrateQuest(q));
+  const questsRaw = (quest as { quests: unknown[] }).quests;
+  const migratedQuests = questsRaw.map((q) => migrateQuest(q));
+  const quests = hydrateQuestSortOrderFromPersistOrder(migratedQuests, questsRaw);
   const lastLoginDate =
     typeof (quest as { lastLoginDate?: unknown }).lastLoginDate === "string"
       ? ((quest as { lastLoginDate: string }).lastLoginDate)
@@ -231,6 +266,7 @@ export function parseEmpireBackupJson(
     .filter((l) => l && typeof l === "object")
     .map((l) => {
       const r = l as Record<string, unknown>;
+      const revert = parseLogRevert(r);
       return {
         id: typeof r.id === "string" ? r.id : `log-${Date.now()}`,
         time: typeof r.time === "number" && Number.isFinite(r.time) ? r.time : Date.now(),
@@ -242,6 +278,7 @@ export function parseEmpireBackupJson(
         ...(parseLogEmphasis(r.emphasis)
           ? { emphasis: parseLogEmphasis(r.emphasis) }
           : {}),
+        ...(revert ? { revert } : {}),
       };
     })
     .slice(0, MAX_LOGS);
@@ -268,8 +305,9 @@ export function applyEmpireBackup(data: EmpireBackupV1): void {
     level: computeLevelFromExp(data.emperor.exp),
   });
   useMapStore.setState({ cities: data.map.cities });
+  const migratedApply = data.quest.quests.map((q) => migrateQuest(q));
   useQuestStore.setState({
-    quests: data.quest.quests,
+    quests: hydrateQuestSortOrderFromPersistOrder(migratedApply, data.quest.quests),
     lastLoginDate: data.quest.lastLoginDate,
     activeCityId: data.quest.activeCityId ?? null,
   });

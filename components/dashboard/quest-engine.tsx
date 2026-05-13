@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -28,17 +29,26 @@ import {
   isEarlyCourtTaskBlocked,
 } from "@/lib/imperial-vitals";
 import { ImperialPhysicianReview } from "./imperial-physician-review";
-import type { Quest, QuestPeriod } from "@/store/types";
+import type { City, Quest, QuestPeriod } from "@/store/types";
 import {
   useEmperorStore,
   useEventStore,
   useMapStore,
   useQuestStore,
+  getQuestDailyCount,
+  isQuestFullyCompletedToday,
 } from "@/store";
 
 const PERIODS: QuestPeriod[] = ["早朝", "晌午", "傍晚", "深夜"];
 
 const NONE_CITY = "__none__";
+
+function cityMatchesSearch(c: City, raw: string): boolean {
+  const q = raw.trim().toLowerCase();
+  if (!q) return true;
+  const blob = `${c.name} ${c.alias?.trim() ?? ""}`.toLowerCase();
+  return blob.includes(q);
+}
 
 export function QuestEngine({
   className,
@@ -60,9 +70,11 @@ export function QuestEngine({
   const isDressed = useEmperorStore((s) => s.isDressed);
   const sleepAtYangxinPalace = useEmperorStore((s) => s.sleepAtYangxinPalace);
   const isNomadMode = useEmperorStore((s) => s.isNomadMode);
+  const getEmperor = useEmperorStore.getState;
 
   const [clock, setClock] = useState(() => new Date());
   const [cityDrawerOpen, setCityDrawerOpen] = useState(false);
+  const [citySearch, setCitySearch] = useState("");
   const isLg = useIsLgScreen();
 
   const activeCity = useMemo(
@@ -81,6 +93,23 @@ export function QuestEngine({
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!cityDrawerOpen) setCitySearch("");
+  }, [cityDrawerOpen]);
+
+  const filteredCities = useMemo(
+    () => cities.filter((c) => cityMatchesSearch(c, citySearch)),
+    [cities, citySearch]
+  );
+
+  /** 列表展示：筛选结果；若当前主攻城被筛掉，仍置顶保留一条以免 Select 失配 */
+  const citiesForPicker = useMemo(() => {
+    if (!activeCity || filteredCities.some((c) => c.id === activeCity.id)) {
+      return filteredCities;
+    }
+    return [activeCity, ...filteredCities];
+  }, [activeCity, filteredCities]);
+
   const curfew = isCurfewMode(health);
   const protocolLock = !isDressed;
   const questDisabled = curfew || protocolLock || !activeCity;
@@ -91,6 +120,15 @@ export function QuestEngine({
     for (const q of quests) {
       const bucket = map.get(q.period);
       if (bucket) bucket.push(q);
+    }
+    for (const p of PERIODS) {
+      const bucket = map.get(p);
+      if (!bucket?.length) continue;
+      bucket.sort((a, b) => {
+        const d = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+        if (d !== 0) return d;
+        return a.id.localeCompare(b.id);
+      });
     }
     return map;
   }, [quests]);
@@ -106,20 +144,26 @@ export function QuestEngine({
     return false;
   };
 
-  const cityDone = (q: Quest) =>
-    activeCity ? activeCity.completedQuestIds.includes(q.id) : false;
+  const cityQuestCount = (q: Quest) =>
+    activeCity ? getQuestDailyCount(activeCity, q.id) : 0;
+  const cityQuestFull = (q: Quest) =>
+    activeCity ? isQuestFullyCompletedToday(activeCity, q) : false;
 
   const handleCheckedChange = (q: Quest, next: boolean | "indeterminate") => {
     if (next === "indeterminate") return;
     if (!activeCity) return;
     if (isTaskRowDisabled(q)) return;
     const want = next === true;
-    const done = cityDone(q);
-    if (want === done) return;
-    if (done) {
-      toggleQuest(q.id);
+    const max = Math.max(1, q.maxCompletionsPerDay ?? 1);
+    const count = getQuestDailyCount(activeCity, q.id);
+
+    if (!want) {
+      if (count === 0) return;
+      toggleQuest(q.id, { clearDay: true });
       return;
     }
+    if (count >= max) return;
+
     const ok = toggleQuest(q.id);
     if (!ok) {
       addLog(`体力不足，无法为【${activeCity.alias || activeCity.name}】点卯「${q.title}」。`, "battle", {
@@ -128,7 +172,20 @@ export function QuestEngine({
       return;
     }
     const { message, cityName } = buildCourtDispatchDecree(q, activeCity);
-    addLog(message, "decree", { cityName });
+    const emperor = getEmperor();
+    const mvaBonus = emperor.isNomadMode && q.id.startsWith("quest-mva-");
+    const expGain = mvaBonus ? Math.round(q.expReward * 1.2) : q.expReward;
+    addLog(message, "decree", {
+      cityName,
+      revert: {
+        kind: "quest_complete",
+        cityId: activeCity.id,
+        questId: q.id,
+        staminaRestored: q.staminaCost,
+        expSubtracted: expGain,
+        tokensSubtracted: 1,
+      },
+    });
   };
 
   const onSleep = () => {
@@ -148,25 +205,65 @@ export function QuestEngine({
       <div className="mx-2 mb-3 space-y-2 rounded-lg border border-imperial-gold/20 bg-slate-950/50 px-3 py-2.5">
         <Label className="text-[11px] font-medium text-imperial-gold">主攻城池</Label>
         {isLg ? (
-          <Select
-            value={activeCityId ?? NONE_CITY}
-            onValueChange={(v) => setActiveCityId(v === NONE_CITY ? null : v)}
-          >
-            <SelectTrigger className="h-11 min-h-[44px] border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100">
-              <SelectValue placeholder="选择城池" />
-            </SelectTrigger>
-            <SelectContent className="border-imperial-gold/20 bg-slate-950 text-slate-100">
-              <SelectItem value={NONE_CITY} className="text-slate-400">
-                （未选定）
-              </SelectItem>
-              {cities.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                  {c.alias?.trim() ? ` · ${c.alias.trim()}` : ""}
+          <div className="space-y-1.5">
+            <p className="text-[10px] leading-snug text-muted-foreground">
+              展开下方列表后，在列表顶部搜索城名或别名；未展开时输入也会在下拉打开后生效。
+            </p>
+            <Select
+              value={activeCityId ?? NONE_CITY}
+              onValueChange={(v) => {
+                setActiveCityId(v === NONE_CITY ? null : v);
+                setCitySearch("");
+              }}
+            >
+              <SelectTrigger className="h-11 min-h-[44px] border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100">
+                <SelectValue placeholder="选择城池" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[min(50vh,22rem)] border-imperial-gold/20 bg-slate-950 p-0 text-slate-100">
+                <div
+                  className="sticky top-0 z-10 border-b border-imperial-gold/20 bg-slate-950 p-2"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <Input
+                    type="search"
+                    value={citySearch}
+                    onChange={(e) => setCitySearch(e.target.value)}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    placeholder="搜索城名或别名…"
+                    aria-label="在列表内搜索主攻城池"
+                    className="h-9 border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100 placeholder:text-slate-500"
+                  />
+                  <p className="mt-1.5 text-[10px] text-muted-foreground">
+                    已匹配 {citiesForPicker.length} 座
+                    {activeCity &&
+                    !filteredCities.some((c) => c.id === activeCity.id) &&
+                    citySearch.trim()
+                      ? "（含当前主攻）"
+                      : ""}
+                  </p>
+                </div>
+                <SelectItem value={NONE_CITY} className="text-slate-400">
+                  （未选定）
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                {citiesForPicker.length === 0 ? (
+                  <SelectItem
+                    value="__city_search_empty__"
+                    disabled
+                    className="cursor-default text-xs text-muted-foreground opacity-80"
+                  >
+                    无匹配城池，请调整关键词
+                  </SelectItem>
+                ) : (
+                  citiesForPicker.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                      {c.alias?.trim() ? ` · ${c.alias.trim()}` : ""}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
         ) : (
           <>
             <Button
@@ -183,8 +280,20 @@ export function QuestEngine({
                 side="bottom"
                 className="flex max-h-[min(70dvh,28rem)] flex-col gap-0 rounded-t-xl border-t border-imperial-gold/25 p-0"
               >
-                <SheetHeader className="shrink-0 border-b border-border px-4 py-3 text-left">
+                <SheetHeader className="shrink-0 space-y-3 border-b border-border px-4 py-3 text-left">
                   <SheetTitle className="text-base text-primary">选择主攻城池</SheetTitle>
+                  <Input
+                    type="search"
+                    value={citySearch}
+                    onChange={(e) => setCitySearch(e.target.value)}
+                    placeholder="搜索城名或别名…"
+                    aria-label="搜索主攻城池"
+                    className="h-10 border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100 placeholder:text-slate-500"
+                    autoFocus
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    已匹配 {filteredCities.length} 座
+                  </p>
                 </SheetHeader>
                 <div className={cityPickerListScrollClass}>
                   <div className="flex flex-col gap-1 pb-4">
@@ -199,7 +308,12 @@ export function QuestEngine({
                     >
                       （未选定）
                     </Button>
-                    {cities.map((c) => {
+                    {filteredCities.length === 0 ? (
+                      <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                        无匹配城池，请调整关键词
+                      </p>
+                    ) : null}
+                    {filteredCities.map((c) => {
                       const selected = c.id === activeCityId;
                       return (
                         <Button
@@ -268,7 +382,14 @@ export function QuestEngine({
               <ul className="space-y-1">
                 {list.map((q) => {
                   const rowDisabled = isTaskRowDisabled(q);
-                  const done = cityDone(q);
+                  const max = Math.max(1, q.maxCompletionsPerDay ?? 1);
+                  const count = cityQuestCount(q);
+                  const doneFull = cityQuestFull(q);
+                  const checked: boolean | "indeterminate" = doneFull
+                    ? true
+                    : count > 0
+                      ? "indeterminate"
+                      : false;
                   return (
                     <li key={q.id}>
                       <div
@@ -277,12 +398,12 @@ export function QuestEngine({
                           rowDisabled
                             ? "cursor-not-allowed opacity-50"
                             : "cursor-pointer hover:bg-muted/50",
-                          done && !rowDisabled && "opacity-75"
+                          doneFull && !rowDisabled && "opacity-75"
                         )}
                       >
                         <Checkbox
                           id={q.id}
-                          checked={done}
+                          checked={checked}
                           disabled={rowDisabled}
                           onCheckedChange={(v) => handleCheckedChange(q, v)}
                           className="mt-0.5 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
@@ -293,14 +414,18 @@ export function QuestEngine({
                             "flex flex-1 flex-col gap-0.5 text-sm font-normal leading-snug",
                             rowDisabled && "cursor-not-allowed",
                             !rowDisabled && "cursor-pointer",
-                            done &&
+                            doneFull &&
                               "text-muted-foreground line-through decoration-muted-foreground/80"
                           )}
                         >
                           <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                             <span>{q.title}</span>
                             <span className="text-[10px] font-medium uppercase tracking-wide text-imperial-gold/90 no-underline">
-                              {done ? "本城已办" : "本城未办"}
+                              {doneFull
+                                ? `本城已办满（${max}/${max}）`
+                                : count > 0
+                                  ? `本城已办 ${count}/${max}`
+                                  : "本城未办"}
                             </span>
                           </span>
                           <span className="text-[10px] text-muted-foreground no-underline">

@@ -11,6 +11,10 @@ import {
   questsForImperialAxis,
   type ImperialAxis,
 } from "@/lib/quest-imperial-axis";
+import {
+  getQuestDailyCount,
+  isQuestFullyCompletedToday,
+} from "@/store";
 import type { City, CityStatus, Quest } from "@/store/types";
 
 function formatCompletedAt(ts: number): string {
@@ -34,13 +38,12 @@ export function CityImperialProgress({
   className,
 }: CityImperialProgressProps) {
   const [openAxis, setOpenAxis] = useState<ImperialAxis | null>(null);
-  const completed = useMemo(
-    () => new Set(city.completedQuestIds),
-    [city.completedQuestIds]
-  );
   const slices = useMemo(
-    () => computeImperialAxisProgress(quests, completed),
-    [quests, completed]
+    () =>
+      computeImperialAxisProgress(quests, (q) =>
+        isQuestFullyCompletedToday(city, q)
+      ),
+    [quests, city]
   );
   const tone = cityStatusProgressTone(statusTone);
 
@@ -92,7 +95,9 @@ export function CityImperialProgress({
               {expanded && axisQuests.length > 0 ? (
                 <ul className="ml-5 mt-1 space-y-1 border-l border-slate-700/80 pb-1 pl-2">
                   {axisQuests.map((q) => {
-                    const done = completed.has(q.id);
+                    const max = Math.max(1, q.maxCompletionsPerDay ?? 1);
+                    const count = getQuestDailyCount(city, q.id);
+                    const full = isQuestFullyCompletedToday(city, q);
                     const at = city.questCompletedAt[q.id];
                     return (
                       <li
@@ -101,15 +106,21 @@ export function CityImperialProgress({
                       >
                         <span
                           className={cn(
-                            done &&
+                            full &&
                               "text-slate-300 line-through decoration-slate-600"
                           )}
                         >
                           {q.title}
                         </span>
-                        {done ? (
+                        {full ? (
                           <span className="text-[9px] text-imperial-gold/80">
-                            勘合于 {formatCompletedAt(at ?? 0)}
+                            本日已办满（{max}/{max}）· 末次{" "}
+                            {formatCompletedAt(at ?? 0)}
+                          </span>
+                        ) : count > 0 ? (
+                          <span className="text-[9px] text-imperial-gold/70">
+                            本日已办 {count}/{max}
+                            {at ? ` · 末次 ${formatCompletedAt(at)}` : ""}
                           </span>
                         ) : (
                           <span className="text-[9px] text-slate-600">未办</span>

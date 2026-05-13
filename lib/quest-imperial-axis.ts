@@ -86,12 +86,12 @@ export type AxisProgressSlice = {
 
 export function computeImperialAxisProgress(
   quests: Quest[],
-  completedIds: Set<string>
+  isFullyCompletedToday: (q: Quest) => boolean
 ): AxisProgressSlice[] {
   return IMPERIAL_AXES_ORDER.map((axis) => {
     const axisQuests = questsForImperialAxis(quests, axis);
     const total = axisQuests.length;
-    const done = axisQuests.filter((q) => completedIds.has(q.id)).length;
+    const done = axisQuests.filter((q) => isFullyCompletedToday(q)).length;
     const pct =
       total === 0 ? 0 : Math.min(100, Math.round((done / total) * 100));
     return {

@@ -75,6 +75,38 @@ export function WarMap({
   const [draftTroops, setDraftTroops] = useState("0");
   const [draftEquipments, setDraftEquipments] = useState("0");
   const [draftStatus, setDraftStatus] = useState<CityStatus>(0);
+  /** 沙盘态势多选筛选；空集表示不筛选（显示全部） */
+  const [statusFilter, setStatusFilter] = useState<Set<CityStatus>>(
+    () => new Set<CityStatus>([2])
+  );
+
+  const toggleStatusFilter = (st: CityStatus) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(st)) next.delete(st);
+      else next.add(st);
+      return next;
+    });
+  };
+
+  const effectiveStatusFilter = useMemo(() => {
+    if (statusFilter.size === 0) return null;
+    return statusFilter;
+  }, [statusFilter]);
+
+  const visibleCities = useMemo(() => {
+    if (!effectiveStatusFilter) return cities;
+    return cities.filter((c) => effectiveStatusFilter.has(c.status));
+  }, [cities, effectiveStatusFilter]);
+
+  const statusCounts = useMemo(() => {
+    const m = new Map<CityStatus, number>();
+    for (const st of STATUS_ORDER) m.set(st, 0);
+    for (const c of cities) {
+      m.set(c.status, (m.get(c.status) ?? 0) + 1);
+    }
+    return m;
+  }, [cities]);
 
   useEffect(() => {
     if (!active) return;
@@ -86,6 +118,12 @@ export function WarMap({
     setDraftEquipments(String(active.equipments));
     setDraftStatus(active.status);
   }, [active]);
+
+  useEffect(() => {
+    if (openId && !visibleCities.some((c) => c.id === openId)) {
+      setOpenId(null);
+    }
+  }, [openId, visibleCities]);
 
   const close = () => setOpenId(null);
 
@@ -120,6 +158,8 @@ export function WarMap({
     const orders = Math.max(0, Number.parseInt(draftOrders, 10) || 0);
     const troops = Math.max(0, Number.parseInt(draftTroops, 10) || 0);
     const equipments = Math.max(0, Number.parseInt(draftEquipments, 10) || 0);
+    const prevCpa = active.cpa;
+    const cpaIncrease = Math.max(0, cpa - prevCpa);
     updateCity(active.id, {
       memo: draftMemo.trim(),
       alias: draftAlias.trim(),
@@ -129,7 +169,20 @@ export function WarMap({
       equipments,
       status: draftStatus,
     });
-    addLog(`朱批已下发至【${active.name}】`, "decree");
+    if (cpaIncrease > 0) {
+      const emperor = useEmperorStore.getState();
+      const prevGold = emperor.gold;
+      const nextGold = Math.max(0, prevGold - cpaIncrease);
+      emperor.updateGold(nextGold);
+      const spent = prevGold - nextGold;
+      addLog(`朱批已下发至【${active.name}】`, "decree");
+      addLog(
+        `户部度支：【${active.name}】度支(CPA) 上调 ${cpaIncrease.toLocaleString("zh-CN")}，国库拨银支用 ${spent.toLocaleString("zh-CN")} 两${spent < cpaIncrease ? "（存银已见底）。" : "。"}`,
+        "treasury"
+      );
+    } else {
+      addLog(`朱批已下发至【${active.name}】`, "decree");
+    }
     close();
   };
 
@@ -143,10 +196,26 @@ export function WarMap({
             中央沙盘
           </h2>
           <p className="text-xs text-muted-foreground">
-            疆域 {cities.length} 座 · 点选一城，右侧滑出奏折以批阅军政备忘
+            疆域 {cities.length} 座
+            {effectiveStatusFilter ? (
+              <>
+                {" "}
+                · 当前展示{" "}
+                <span className="tabular-nums text-foreground">{visibleCities.length}</span>{" "}
+                座（按所选态势）
+              </>
+            ) : (
+              <> · 展示全部 {cities.length} 座（未选任何态势标签）</>
+            )}
+            {" · "}
+            点选一城，右侧滑出奏折
           </p>
         </div>
-        <Legend />
+        <StatusFilterBar
+          selected={statusFilter}
+          counts={statusCounts}
+          onToggle={toggleStatusFilter}
+        />
       </div>
 
       <Sheet
@@ -161,8 +230,12 @@ export function WarMap({
             <p className="col-span-full rounded-lg border border-dashed border-imperial-gold/25 bg-slate-950/40 px-4 py-10 text-center text-sm text-muted-foreground">
               暂无城池。请点击顶部「造办处」齿轮 → 疆域司 → 新增城池。
             </p>
+          ) : visibleCities.length === 0 ? (
+            <p className="col-span-full rounded-lg border border-dashed border-imperial-gold/25 bg-slate-950/40 px-4 py-8 text-center text-sm text-muted-foreground">
+              所选态势下暂无城池。请点选其它态势标签，或取消筛选以显示全部。
+            </p>
           ) : (
-            cities.map((city) => (
+            visibleCities.map((city) => (
               <SheetTrigger key={city.id} asChild>
                 <CityTileButton
                   city={city}
@@ -353,17 +426,47 @@ export function WarMap({
   );
 }
 
-function Legend() {
+function StatusFilterBar({
+  selected,
+  counts,
+  onToggle,
+}: {
+  selected: Set<CityStatus>;
+  counts: Map<CityStatus, number>;
+  onToggle: (st: CityStatus) => void;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground sm:text-xs">
-      {([0, 1, 2, 3] as const).map((st) => (
-        <span key={st} className="inline-flex items-center gap-1">
-          <span
-            className={cn("h-2 w-2 rounded-full", cityStatusDotClass(st))}
-          />
-          {CITY_STATUS_LABELS[st]}
-        </span>
-      ))}
+    <div className="flex max-w-full flex-col items-stretch gap-1.5 sm:max-w-[28rem] sm:items-end">
+      <p className="text-[10px] text-muted-foreground sm:text-right">
+        态势筛选（可多选；全部取消则显示全城）
+      </p>
+      <div className="flex flex-wrap gap-1.5 sm:justify-end">
+        {STATUS_ORDER.map((st) => {
+          const on = selected.has(st);
+          const n = counts.get(st) ?? 0;
+          return (
+            <button
+              key={st}
+              type="button"
+              onClick={() => onToggle(st)}
+              className={cn(
+                "inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium transition sm:min-h-0 sm:text-xs",
+                on
+                  ? "border-imperial-gold/70 bg-imperial-gold/15 text-imperial-gold shadow-sm ring-1 ring-imperial-gold/25"
+                  : "border-border/60 bg-slate-950/50 text-muted-foreground hover:border-imperial-gold/35 hover:text-foreground"
+              )}
+              aria-pressed={on}
+            >
+              <span
+                className={cn("h-2 w-2 shrink-0 rounded-full", cityStatusDotClass(st))}
+                aria-hidden
+              />
+              <span>{CITY_STATUS_LABELS[st]}</span>
+              <span className="tabular-nums text-[9px] opacity-80 sm:text-[10px]">({n})</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

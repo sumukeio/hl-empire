@@ -42,7 +42,7 @@
 ## 3. 现状摘要（与方案相关）
 
 - **布局**：`DashboardShell` 已在 `< lg` 使用底栏 Sheet 承载军机 + 养正司 + 内务府；主区 `pb-24` 防底栏遮挡；大屏三栏分栏。详见设计说明 §5。
-- **持久化**：各 Store `skipHydration: true`，`components/providers.tsx` 挂载后 `rehydrateAllStores()` → `resetDailyQuests()` → `ensureMvaQuestCatalog()`。
+- **持久化**：各 Store `skipHydration: true`，`components/empire-cloud-sync.tsx` 挂载后 `rehydrateAllStores()` → `resetDailyQuests()` → `ensureMvaQuestCatalog()`。
 - **全量备份**：`lib/empire-backup.ts` + 造办处「帝国档案」JSON 与 Store 形状强相关；上云后仍可保留作人工冷备导出格式。
 
 ---

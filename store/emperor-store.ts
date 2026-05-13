@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { buildEmperorTitlePromotionMessage } from "@/lib/emperor-title";
+
 import { useEventStore } from "./event-store";
 
 const EXP_PER_LEVEL = 100;
@@ -13,6 +15,14 @@ function computeLevelFromExp(totalExp: number): number {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
+}
+
+function emitEmperorTitleTierPromotion(prevExp: number, nextExp: number) {
+  const msg = buildEmperorTitlePromotionMessage(prevExp, nextExp);
+  if (!msg) return;
+  useEventStore.getState().addLog(msg, "decree", {
+    emphasis: "crimsonDecree",
+  });
 }
 
 export interface EmperorState {
@@ -51,6 +61,10 @@ export interface EmperorActions {
   addExp: (amount: number) => void;
   consumeStamina: (amount: number) => void;
   updateGold: (gold: number | ((prev: number) => number)) => void;
+  /** 内务府：登记工资/补贴等非业务岁入 */
+  injectGold: (amount: number) => void;
+  /** 户部：手动将国库校准为实存现金 */
+  syncGold: (total: number) => void;
   updateTroops: (troops: number | ((prev: number) => number)) => void;
   dailyReset: () => void;
   addTokens: (amount: number) => void;
@@ -91,6 +105,12 @@ export interface EmperorActions {
   meetGrandSecretariat: () => boolean;
   /** 内务府 · 宗人府：祸国妖姬（私库腰斩、民心大损） */
   acceptEntropyCompanion: () => boolean;
+  /** 撤回军机勘合：恢复体力、扣回功勋、扣回翻牌券（与邸报 revert 配套） */
+  revertQuestCompletionEffects: (args: {
+    staminaRestored: number;
+    expSubtracted: number;
+    tokensSubtracted: number;
+  }) => void;
 }
 
 const defaultState: EmperorState = {
@@ -119,10 +139,12 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
       ...defaultState,
       addExp: (amount) => {
         if (amount <= 0) return;
+        const prevExp = get().exp;
         set((s) => {
           const exp = s.exp + amount;
           return { exp, level: computeLevelFromExp(exp) };
         });
+        emitEmperorTitleTierPromotion(prevExp, get().exp);
       },
       consumeStamina: (amount) => {
         if (amount <= 0) return;
@@ -135,6 +157,25 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
               ? (updater as (prev: number) => number)(s.gold)
               : updater,
         })),
+      injectGold: (amount) => {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        const n = Math.floor(amount);
+        if (n <= 0) return;
+        set((s) => ({ gold: s.gold + n }));
+        useEventStore.getState().addLog(
+          `【内务府】岁入拨入 ${n.toLocaleString("zh-CN")} 两。`,
+          "treasury"
+        );
+      },
+      syncGold: (total) => {
+        if (!Number.isFinite(total)) return;
+        const n = Math.max(0, Math.floor(total));
+        set({ gold: n });
+        useEventStore.getState().addLog(
+          `【户部】国库储蓄已校准，当前存银 ${n.toLocaleString("zh-CN")} 两。`,
+          "treasury"
+        );
+      },
       updateTroops: (updater) =>
         set((s) => ({
           troops:
@@ -170,24 +211,30 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         const s = get();
         if (s.health < 30 || !s.isDressed || s.isEntertaining) return false;
         if (s.stamina < 20) return false;
+        const prevExp = s.exp;
+        const nextExp = s.exp + 15;
         set({
           stamina: s.stamina - 20,
-          exp: s.exp + 15,
+          exp: nextExp,
           martialArts: s.martialArts + 5,
-          level: computeLevelFromExp(s.exp + 15),
+          level: computeLevelFromExp(nextExp),
         });
+        emitEmperorTitleTierPromotion(prevExp, nextExp);
         return true;
       },
       royalSparring: () => {
         const s = get();
         if (s.health < 30 || !s.isDressed || s.isEntertaining) return false;
         if (s.stamina < 15) return false;
+        const prevExp = s.exp;
+        const nextExp = s.exp + 10;
         set({
           stamina: s.stamina - 15,
-          exp: s.exp + 10,
+          exp: nextExp,
           martialArts: s.martialArts + 3,
-          level: computeLevelFromExp(s.exp + 10),
+          level: computeLevelFromExp(nextExp),
         });
+        emitEmperorTitleTierPromotion(prevExp, nextExp);
         return true;
       },
       startEntertainment: () => {
@@ -298,6 +345,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
       visitImperialArchives: () => {
         const s = get();
         if (s.privateVault < 500) return false;
+        const prevExp = s.exp;
         const exp = s.exp + 50;
         set({
           privateVault: s.privateVault - 500,
@@ -310,6 +358,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           "treasury",
           { emphasis: "goldFlash" }
         );
+        emitEmperorTitleTierPromotion(prevExp, exp);
         return true;
       },
       indulgeCommercialTourism: () => {
@@ -344,6 +393,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
       meetGrandSecretariat: () => {
         const s = get();
         if (s.stamina < 5) return false;
+        const prevExp = s.exp;
         const exp = s.exp + 20;
         set({
           stamina: clamp(s.stamina - 5, 0, 100),
@@ -354,6 +404,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           "圣上召见内阁首辅与太傅，彻夜长谈，认知跃迁！",
           "decree"
         );
+        emitEmperorTitleTierPromotion(prevExp, exp);
         return true;
       },
       acceptEntropyCompanion: () => {
@@ -370,6 +421,23 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           { emphasis: "calamity" }
         );
         return true;
+      },
+      revertQuestCompletionEffects: ({
+        staminaRestored,
+        expSubtracted,
+        tokensSubtracted,
+      }) => {
+        set((s) => {
+          const stamina = clamp(s.stamina + staminaRestored, 0, 100);
+          const exp = Math.max(0, s.exp - expSubtracted);
+          const tokens = Math.max(0, s.tokens - tokensSubtracted);
+          return {
+            stamina,
+            exp,
+            level: computeLevelFromExp(exp),
+            tokens,
+          };
+        });
       },
     }),
     {

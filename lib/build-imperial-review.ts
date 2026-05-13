@@ -1,5 +1,6 @@
 import { CITY_STATUS_LABELS } from "@/lib/city-status";
 import { todayKey } from "@/lib/today-key";
+import { getQuestDailyCount } from "@/store/map-store";
 import type { City, CityStatus, EventLog, Quest } from "@/store/types";
 
 export type ImperialReviewInput = {
@@ -65,24 +66,23 @@ export function filterLogsFromToday(logs: EventLog[], now = new Date()): EventLo
     .slice(0, 10);
 }
 
-/** 今日各城已勘合之军机（用于起居注）。 */
+/** 各城本日仍有勘合次数的军机（用于起居注；与跨日清零后的当日计数一致）。 */
 export function collectTodayCompletedQuestLines(
   cities: City[],
-  quests: Quest[],
-  now = new Date()
+  quests: Quest[]
 ): string[] {
-  const day = todayKey(now);
   const titleById = new Map(quests.map((q) => [q.id, q.title]));
   const lines: string[] = [];
   for (const c of cities) {
-    for (const qid of c.completedQuestIds) {
-      const ts = c.questCompletedAt[qid];
-      if (typeof ts !== "number" || !Number.isFinite(ts) || ts <= 0) {
-        continue;
-      }
-      if (todayKey(new Date(ts)) !== day) continue;
+    const ids = new Set<string>([
+      ...Object.keys(c.questDailyCompletions ?? {}),
+      ...c.completedQuestIds,
+    ]);
+    for (const qid of Array.from(ids)) {
+      const n = getQuestDailyCount(c, qid);
+      if (n < 1) continue;
       const t = titleById.get(qid) ?? qid;
-      lines.push(`【${c.name}】${t}`);
+      lines.push(n === 1 ? `【${c.name}】${t}` : `【${c.name}】${t} ×${n}`);
     }
   }
   return lines;

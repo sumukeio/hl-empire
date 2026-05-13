@@ -4,9 +4,16 @@ export {
   useMapStore,
   createDefaultCities,
   createEmptyCity,
+  getQuestDailyCount,
+  isQuestFullyCompletedToday,
 } from "./map-store";
 export type { BulkAddCitiesResult } from "./map-store";
-export { useQuestStore, createDefaultQuests, createEmptyQuest } from "./quest-store";
+export {
+  useQuestStore,
+  createDefaultQuests,
+  createEmptyQuest,
+  hydrateQuestSortOrderFromPersistOrder,
+} from "./quest-store";
 export type { BulkAddQuestsResult } from "./quest-store";
 export { useEventStore } from "./event-store";
 export {

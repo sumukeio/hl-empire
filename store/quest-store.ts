@@ -5,7 +5,7 @@ import { todayKey } from "@/lib/today-key";
 import { parseBulkQuestText } from "@/lib/parse-bulk-quest-lines";
 
 import { useEmperorStore } from "./emperor-store";
-import { useMapStore } from "./map-store";
+import { useMapStore, getQuestDailyCount } from "./map-store";
 import type { Quest, QuestPatch, QuestPeriod } from "./types";
 
 const PERIODS_ALL: QuestPeriod[] = ["早朝", "晌午", "傍晚", "深夜"];
@@ -147,14 +147,21 @@ export function createDefaultQuests(): Quest[] {
     },
   ];
 
-  return rows.map((r) => ({
-    id: `quest-mva-${r.period}-${r.slot}`,
-    period: r.period,
-    title: r.title,
-    completed: false,
-    expReward: r.expReward,
-    staminaCost: r.staminaCost,
-  }));
+  const sortRank = new Map<QuestPeriod, number>();
+  return rows.map((r) => {
+    const n = sortRank.get(r.period) ?? 0;
+    sortRank.set(r.period, n + 1);
+    return {
+      id: `quest-mva-${r.period}-${r.slot}`,
+      period: r.period,
+      title: r.title,
+      completed: false,
+      expReward: r.expReward,
+      staminaCost: r.staminaCost,
+      sortOrder: n * 10,
+      maxCompletionsPerDay: 1,
+    };
+  });
 }
 
 export function createEmptyQuest(
@@ -177,6 +184,15 @@ export function createEmptyQuest(
       typeof partial?.staminaCost === "number" && partial.staminaCost >= 0
         ? partial.staminaCost
         : 5,
+    sortOrder:
+      typeof partial?.sortOrder === "number" && Number.isFinite(partial.sortOrder)
+        ? partial.sortOrder
+        : 0,
+    maxCompletionsPerDay:
+      typeof partial?.maxCompletionsPerDay === "number" &&
+      Number.isFinite(partial.maxCompletionsPerDay)
+        ? Math.max(1, Math.min(99, Math.floor(partial.maxCompletionsPerDay)))
+        : 1,
   };
 }
 
@@ -202,7 +218,42 @@ export function migrateQuest(raw: unknown): Quest {
       typeof r.staminaCost === "number" && Number.isFinite(r.staminaCost)
         ? Math.max(0, r.staminaCost)
         : 0,
+    sortOrder:
+      typeof r.sortOrder === "number" && Number.isFinite(r.sortOrder)
+        ? r.sortOrder
+        : 0,
+    maxCompletionsPerDay:
+      typeof r.maxCompletionsPerDay === "number" && Number.isFinite(r.maxCompletionsPerDay)
+        ? Math.max(1, Math.min(99, Math.floor(r.maxCompletionsPerDay)))
+        : 1,
   };
+}
+
+/** 按存档中的 id 顺序恢复各时辰内的 sortOrder（兼容无 sortOrder 的旧档） */
+export function hydrateQuestSortOrderFromPersistOrder(
+  quests: Quest[],
+  rawPersisted: unknown[]
+): Quest[] {
+  const rawIds = rawPersisted
+    .map((x) =>
+      typeof x === "object" && x !== null && "id" in x
+        ? String((x as { id: unknown }).id)
+        : ""
+    )
+    .filter(Boolean);
+  const pos = new Map<string, number>();
+  const perP = new Map<QuestPeriod, number>();
+  for (const id of rawIds) {
+    const q = quests.find((x) => x.id === id);
+    if (!q) continue;
+    const c = perP.get(q.period) ?? 0;
+    pos.set(id, c * 10);
+    perP.set(q.period, c + 1);
+  }
+  return quests.map((q) => ({
+    ...q,
+    sortOrder: pos.has(q.id) ? pos.get(q.id)! : q.sortOrder,
+  }));
 }
 
 export interface QuestState {
@@ -216,7 +267,7 @@ export interface QuestActions {
   addQuest: (quest: Quest) => void;
   removeQuest: (id: string) => void;
   updateQuest: (id: string, data: QuestPatch) => void;
-  toggleQuest: (questId: string) => boolean;
+  toggleQuest: (questId: string, opts?: { clearDay?: boolean }) => boolean;
   resetDailyQuests: () => void;
   /**
    * 保证「祖宗之法」MVA 任务集存在：
@@ -229,6 +280,8 @@ export interface QuestActions {
   bulkAddQuests: (text: string) => BulkAddQuestsResult;
   bulkRemoveQuests: (ids: string[]) => void;
   setActiveCityId: (id: string | null) => void;
+  /** 同一时辰内按给定 id 顺序重排（用于拖动） */
+  reorderQuestsInPeriod: (period: QuestPeriod, orderedIds: string[]) => void;
 }
 
 export const useQuestStore = create<QuestState & QuestActions>()(
@@ -238,9 +291,34 @@ export const useQuestStore = create<QuestState & QuestActions>()(
       lastLoginDate: "",
       activeCityId: null,
       addQuest: (quest) =>
-        set((s) => ({
-          quests: [...s.quests, { ...quest, id: quest.id || newQuestId() }],
-        })),
+        set((s) => {
+          const id = quest.id || newQuestId();
+          const period = normalizePeriod(quest.period);
+          const blank = createEmptyQuest({
+            title: quest.title,
+            period,
+            expReward: quest.expReward,
+            staminaCost: quest.staminaCost,
+          });
+          const inP = s.quests.filter((q) => q.period === period);
+          const minSo =
+            inP.length === 0 ? 0 : Math.min(...inP.map((q) => q.sortOrder ?? 0));
+          const next: Quest = {
+            ...blank,
+            id,
+            period,
+            title: quest.title?.trim() ? quest.title : blank.title,
+            expReward: quest.expReward ?? blank.expReward,
+            staminaCost: quest.staminaCost ?? blank.staminaCost,
+            sortOrder: minSo - 1,
+            maxCompletionsPerDay:
+              typeof quest.maxCompletionsPerDay === "number" &&
+              Number.isFinite(quest.maxCompletionsPerDay)
+                ? Math.max(1, Math.min(99, Math.floor(quest.maxCompletionsPerDay)))
+                : blank.maxCompletionsPerDay,
+          };
+          return { quests: [...s.quests, next] };
+        }),
       removeQuest: (id) =>
         set((s) => ({
           quests: s.quests.filter((q) => q.id !== id),
@@ -249,40 +327,60 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         set((s) => ({
           quests: s.quests.map((q) => {
             if (q.id !== id) return q;
+            const prevPeriod = q.period;
             const next = { ...q, ...data, id: q.id };
             next.period = normalizePeriod(next.period);
+            if (next.period !== prevPeriod) {
+              const inNew = s.quests.filter(
+                (x) => x.period === next.period && x.id !== id
+              );
+              const minSo =
+                inNew.length === 0
+                  ? 0
+                  : Math.min(...inNew.map((x) => x.sortOrder ?? 0));
+              next.sortOrder = minSo - 1;
+            }
+            if (typeof next.maxCompletionsPerDay === "number") {
+              next.maxCompletionsPerDay = Math.max(
+                1,
+                Math.min(99, Math.floor(next.maxCompletionsPerDay))
+              );
+            }
             return next;
           }),
         })),
-      toggleQuest: (questId) => {
+      toggleQuest: (questId, opts) => {
         const { activeCityId, quests } = get();
         if (!activeCityId) return false;
         const quest = quests.find((q) => q.id === questId);
         if (!quest) return false;
-        const city = useMapStore
-          .getState()
-          .cities.find((c) => c.id === activeCityId);
+        const map = useMapStore.getState();
+        const city = map.cities.find((c) => c.id === activeCityId);
         if (!city) return false;
 
-        const isDone = city.completedQuestIds.includes(questId);
-        if (!isDone) {
-          const emperor = useEmperorStore.getState();
-          if (emperor.stamina < quest.staminaCost) return false;
-          emperor.consumeStamina(quest.staminaCost);
-          /** 移动行宫：仅对内置 MVA 模板任务（quest-mva-*）功勋 +20% */
-          const mvaBonus =
-            emperor.isNomadMode && quest.id.startsWith("quest-mva-");
-          const expGain = mvaBonus
-            ? Math.round(quest.expReward * 1.2)
-            : quest.expReward;
-          emperor.addExp(expGain);
+        if (opts?.clearDay) {
+          map.clearQuestCompletionsForDay(activeCityId, questId);
+          return true;
         }
 
-        useMapStore.getState().toggleCityQuest(activeCityId, questId);
+        const max = Math.max(1, Math.min(99, quest.maxCompletionsPerDay ?? 1));
+        const count = getQuestDailyCount(city, questId);
+        if (count >= max) return false;
 
-        if (!isDone) {
-          useEmperorStore.getState().addTokens(1);
-        }
+        const emperor = useEmperorStore.getState();
+        if (emperor.stamina < quest.staminaCost) return false;
+
+        const inc = map.incrementQuestCompletion(activeCityId, questId, max);
+        if (!inc) return false;
+
+        emperor.consumeStamina(quest.staminaCost);
+        const mvaBonus =
+          emperor.isNomadMode && quest.id.startsWith("quest-mva-");
+        const expGain = mvaBonus
+          ? Math.round(quest.expReward * 1.2)
+          : quest.expReward;
+        emperor.addExp(expGain);
+        emperor.addTokens(1);
         return true;
       },
       resetDailyQuests: () => {
@@ -294,6 +392,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             ...c,
             completedQuestIds: [],
             questCompletedAt: {},
+            questDailyCompletions: {},
           })),
         }));
         set({
@@ -322,17 +421,32 @@ export const useQuestStore = create<QuestState & QuestActions>()(
       },
       bulkAddQuests: (text) => {
         const { items, errors } = parseBulkQuestText(text);
-        const newQuests: Quest[] = items.map((d) =>
-          createEmptyQuest({
+        const s = get();
+        const n = items.length;
+        if (n === 0) return { added: 0, errors };
+        let mutable = [...s.quests];
+        const newQuests: Quest[] = [];
+        for (let i = 0; i < n; i++) {
+          const d = items[i]!;
+          const period = d.period;
+          const inP = mutable.filter((q) => q.period === period);
+          const minSo =
+            inP.length === 0 ? 0 : Math.min(...inP.map((q) => q.sortOrder ?? 0));
+          const sortOrder = minSo - (n - i);
+          const q: Quest = {
+            id: newQuestId(),
+            period,
             title: d.title,
-            period: d.period,
+            completed: false,
             expReward: d.expReward,
             staminaCost: d.staminaCost,
-          })
-        );
-        if (newQuests.length > 0) {
-          set((s) => ({ quests: [...s.quests, ...newQuests] }));
+            sortOrder,
+            maxCompletionsPerDay: 1,
+          };
+          mutable.push(q);
+          newQuests.push(q);
         }
+        set({ quests: mutable });
         return { added: newQuests.length, errors };
       },
       bulkRemoveQuests: (ids) => {
@@ -345,6 +459,25 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         }));
       },
       setActiveCityId: (id) => set({ activeCityId: id }),
+      reorderQuestsInPeriod: (period, orderedIds) =>
+        set((s) => {
+          const idSet = new Set(orderedIds);
+          const otherPeriods = s.quests.filter((q) => q.period !== period);
+          const reindexed: Quest[] = [];
+          orderedIds.forEach((qid, idx) => {
+            const q = s.quests.find((x) => x.id === qid && x.period === period);
+            if (q) reindexed.push({ ...q, period, sortOrder: idx * 10 });
+          });
+          const restSame = s.quests.filter(
+            (q) => q.period === period && !idSet.has(q.id)
+          );
+          let tail = orderedIds.length * 10;
+          const restIndexed = restSame.map((q) => {
+            tail += 10;
+            return { ...q, sortOrder: tail };
+          });
+          return { quests: [...otherPeriods, ...reindexed, ...restIndexed] };
+        }),
     }),
     {
       name: "hanling-quest",
@@ -369,9 +502,11 @@ export const useQuestStore = create<QuestState & QuestActions>()(
                 : current.activeCityId,
           };
         }
+        const migrated = p.quests.map((q) => migrateQuest(q));
+        const quests = hydrateQuestSortOrderFromPersistOrder(migrated, p.quests);
         return {
           ...current,
-          quests: p.quests.map((q) => migrateQuest(q)),
+          quests,
           lastLoginDate:
             typeof p.lastLoginDate === "string"
               ? p.lastLoginDate

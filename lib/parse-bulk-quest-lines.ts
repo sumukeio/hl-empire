@@ -17,59 +17,14 @@ type ParseLineResult =
   | { ok: true; draft: BulkQuestDraft }
   | { ok: false; message: string };
 
-/**
- * 解析单行：`标题, 时段, 功勋, 体力`（中英文逗号）或空格分隔（标题可含空格，取末三格为时段/功勋/体力）。
- * 功勋、体力缺省分别为 10、5。
- */
-export function parseQuestLineResult(line: string): ParseLineResult {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    return { ok: false, message: "空行" };
-  }
-
-  const hasComma = /[,，]/.test(trimmed);
-  const segments = hasComma
-    ? trimmed.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
-    : trimmed.split(/\s+/).filter(Boolean);
-
-  if (segments.length < 2) {
-    return { ok: false, message: "字段不足（至少需标题与时段）" };
-  }
-
-  let title: string;
-  let periodRaw: string;
-  let expPart: string | undefined;
-  let staminaPart: string | undefined;
-
-  if (hasComma) {
-    if (segments.length >= 4) {
-      title = segments[0]!;
-      periodRaw = segments[1]!;
-      expPart = segments[2];
-      staminaPart = segments[3];
-    } else if (segments.length === 3) {
-      title = segments[0]!;
-      periodRaw = segments[1]!;
-      expPart = segments[2];
-    } else {
-      title = segments[0]!;
-      periodRaw = segments[1]!;
-    }
-  } else if (segments.length >= 4) {
-    periodRaw = segments[segments.length - 3]!;
-    expPart = segments[segments.length - 2];
-    staminaPart = segments[segments.length - 1];
-    title = segments.slice(0, -3).join(" ");
-  } else if (segments.length === 3) {
-    title = segments[0]!;
-    periodRaw = segments[1]!;
-    expPart = segments[2];
-  } else {
-    title = segments[0]!;
-    periodRaw = segments[1]!;
-  }
-
-  if (!title) {
+function buildDraft(
+  title: string,
+  periodRaw: string,
+  expPart: string | undefined,
+  staminaPart: string | undefined
+): ParseLineResult {
+  const t = title.trim();
+  if (!t) {
     return { ok: false, message: "标题为空" };
   }
   if (!isQuestPeriod(periodRaw)) {
@@ -91,12 +46,88 @@ export function parseQuestLineResult(line: string): ParseLineResult {
   return {
     ok: true,
     draft: {
-      title,
+      title: t,
       period: periodRaw,
       expReward,
       staminaCost,
     },
   };
+}
+
+/**
+ * 解析单行，优先级：
+ * 1) **Tab** 分列（推荐；标题可含逗号；在输入框内按 Tab 会插入制表符）
+ * 2) **竖线 |** 分列（手打效率最高，标题内勿用 |）
+ * 3) **逗号** 分列：取 **最后三段** 为时段、功勋、体力，前面合并为标题（标题可含中英文逗号）
+ * 4) 无逗号时按 **空白** 分列，末三格为时段、功勋、体力
+ */
+export function parseQuestLineResult(line: string): ParseLineResult {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return { ok: false, message: "空行" };
+  }
+
+  if (trimmed.includes("\t")) {
+    const parts = trimmed
+      .split("\t")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (parts.length < 4) {
+      return {
+        ok: false,
+        message: "Tab 分列至少 4 段：标题（可含多段 Tab）、时段、功勋、体力",
+      };
+    }
+    const title = parts.slice(0, -3).join("\t");
+    const periodRaw = parts[parts.length - 3]!;
+    const expPart = parts[parts.length - 2];
+    const staminaPart = parts[parts.length - 1];
+    return buildDraft(title, periodRaw, expPart, staminaPart);
+  }
+
+  if (trimmed.includes("|")) {
+    const parts = trimmed
+      .split("|")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (parts.length < 4) {
+      return {
+        ok: false,
+        message: "竖线 | 分列至少 4 段：标题 | 时段 | 功勋 | 体力",
+      };
+    }
+    const title = parts.slice(0, -3).join("|");
+    const periodRaw = parts[parts.length - 3]!;
+    const expPart = parts[parts.length - 2];
+    const staminaPart = parts[parts.length - 1];
+    return buildDraft(title, periodRaw, expPart, staminaPart);
+  }
+
+  const commaParts = trimmed
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (commaParts.length >= 4) {
+    const title = commaParts.slice(0, -3).join("，");
+    const periodRaw = commaParts[commaParts.length - 3]!;
+    const expPart = commaParts[commaParts.length - 2];
+    const staminaPart = commaParts[commaParts.length - 1];
+    return buildDraft(title, periodRaw, expPart, staminaPart);
+  }
+
+  const segments = trimmed.split(/\s+/).filter(Boolean);
+  if (segments.length < 4) {
+    return {
+      ok: false,
+      message:
+        "字段不足。推荐：标题|时段|功勋|体力 ；或 Tab 四列；逗号格式时标题与时段间请用逗号且时段/功勋/体力占最后三格",
+    };
+  }
+  const periodRaw = segments[segments.length - 3]!;
+  const expPart = segments[segments.length - 2];
+  const staminaPart = segments[segments.length - 1];
+  const title = segments.slice(0, -3).join(" ");
+  return buildDraft(title, periodRaw, expPart, staminaPart);
 }
 
 export function parseBulkQuestText(text: string): {

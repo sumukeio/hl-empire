@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, LogOut, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, GripVertical, LogOut, Plus, Trash2 } from "lucide-react";
 
 import {
   AlertDialog,
@@ -79,6 +79,7 @@ export function SettingsView() {
   const updateQuest = useQuestStore((s) => s.updateQuest);
   const bulkAddQuests = useQuestStore((s) => s.bulkAddQuests);
   const bulkRemoveQuests = useQuestStore((s) => s.bulkRemoveQuests);
+  const reorderQuestsInPeriod = useQuestStore((s) => s.reorderQuestsInPeriod);
   const addLog = useEventStore((s) => s.addLog);
 
   const [questBulkText, setQuestBulkText] = useState("");
@@ -98,9 +99,52 @@ export function SettingsView() {
     return [...quests].sort((a, b) => {
       const da = (order.get(a.period) ?? 99) - (order.get(b.period) ?? 99);
       if (da !== 0) return da;
-      return a.title.localeCompare(b.title, "zh-Hans-CN");
+      const oa = a.sortOrder ?? 0;
+      const ob = b.sortOrder ?? 0;
+      if (oa !== ob) return oa - ob;
+      return a.id.localeCompare(b.id);
     });
   }, [quests]);
+
+  const [dragQuestId, setDragQuestId] = useState<string | null>(null);
+
+  const handleQuestDragStart = useCallback((e: React.DragEvent, id: string) => {
+    setDragQuestId(id);
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handleQuestDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const handleQuestDrop = useCallback(
+    (e: React.DragEvent, targetId: string, period: QuestPeriod) => {
+      e.preventDefault();
+      const raw = e.dataTransfer.getData("text/plain");
+      const dragId = raw || dragQuestId;
+      setDragQuestId(null);
+      if (!dragId || dragId === targetId) return;
+      const qDrag = quests.find((q) => q.id === dragId);
+      const qTar = quests.find((q) => q.id === targetId);
+      if (!qDrag || !qTar || qDrag.period !== period || qTar.period !== period) return;
+      const inPeriod = sortedQuests.filter((q) => q.period === period);
+      const ordered = inPeriod.map((q) => q.id);
+      const from = ordered.indexOf(dragId);
+      const to = ordered.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      const next = [...ordered];
+      next.splice(from, 1);
+      next.splice(to, 0, dragId);
+      reorderQuestsInPeriod(period, next);
+    },
+    [dragQuestId, quests, sortedQuests, reorderQuestsInPeriod]
+  );
+
+  const handleQuestDragEnd = useCallback(() => {
+    setDragQuestId(null);
+  }, []);
 
   const allQuestsSelected =
     quests.length > 0 && selectedQuestIds.length === quests.length;
@@ -191,7 +235,7 @@ export function SettingsView() {
       setQuestImportSummary(`未新增政务。解析问题如下：\n\n${errText}`);
     } else {
       setQuestImportSummary(
-        "没有可解析的非空行。请每行一条，格式示例：\n精确否定垃圾词, 早朝, 15, 10"
+        "没有可解析的非空行。示例：\n【户部】核算…|晌午|10|5\n或 Tab 分列四段。"
       );
     }
     setQuestImportResultOpen(true);
@@ -427,13 +471,29 @@ export function SettingsView() {
                   htmlFor="bulk-quests"
                   className="text-xs text-imperial-gold/90"
                 >
-                  批量导入（每行一条：任务标题, 时段, 功勋, 体力）
+                  批量导入（每行一条）优先{" "}
+                  <strong className="text-imperial-gold">Tab</strong> 四列；手打推荐{" "}
+                  <strong className="text-imperial-gold">标题|时段|功勋|体力</strong>
+                  ；亦可用逗号且标题可含逗号（末三格为时段、功勋、体力）。输入框内按 Tab
+                  会插入制表符。
                 </Label>
                 <Textarea
                   id="bulk-quests"
                   value={questBulkText}
                   onChange={(e) => setQuestBulkText(e.target.value)}
-                  placeholder="任务标题, 时段, 功勋, 体力（例如：精确否定垃圾词, 早朝, 15, 10）"
+                  onKeyDown={(e) => {
+                    if (e.key !== "Tab") return;
+                    e.preventDefault();
+                    const ta = e.currentTarget;
+                    const start = ta.selectionStart ?? 0;
+                    const end = ta.selectionEnd ?? 0;
+                    const v = ta.value;
+                    setQuestBulkText(v.slice(0, start) + "\t" + v.slice(end));
+                    requestAnimationFrame(() => {
+                      ta.selectionStart = ta.selectionEnd = start + 1;
+                    });
+                  }}
+                  placeholder="户部核算|晌午|10|5  或  标题列\t晌午\t10\t5"
                   rows={4}
                   className={cn(
                     "min-h-[6rem] resize-y border-slate-800 bg-slate-950/80 text-sm text-slate-100 placeholder:text-slate-600",
@@ -490,7 +550,10 @@ export function SettingsView() {
                 </Button>
               </div>
 
-              <div className="hidden border-b border-slate-800/90 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid sm:grid-cols-[auto_minmax(0,1fr)_6.5rem_4.5rem_4.5rem_auto] sm:gap-2 sm:px-2">
+              <div className="hidden border-b border-slate-800/90 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid sm:grid-cols-[auto_auto_minmax(0,1fr)_6.5rem_4.5rem_4.5rem_auto] sm:gap-2 sm:px-2">
+                <span className="w-5 text-center" title="同辰内拖动排序">
+                  序
+                </span>
                 <span className="w-4" aria-hidden />
                 <span>任务标题</span>
                 <span>时辰</span>
@@ -511,6 +574,10 @@ export function SettingsView() {
                         key={q.id}
                         quest={q}
                         selected={selectedQuestIds.includes(q.id)}
+                        onDragStartRow={(e) => handleQuestDragStart(e, q.id)}
+                        onDragOverRow={handleQuestDragOver}
+                        onDropRow={(e) => handleQuestDrop(e, q.id, q.period)}
+                        onDragEndRow={handleQuestDragEnd}
                         onSelectedChange={(checked) => {
                           setSelectedQuestIds((prev) =>
                             checked
@@ -781,6 +848,10 @@ function CompactQuestRow({
   updateQuest,
   removeQuest,
   addLog,
+  onDragStartRow,
+  onDragOverRow,
+  onDropRow,
+  onDragEndRow,
 }: {
   quest: Quest;
   selected: boolean;
@@ -792,10 +863,15 @@ function CompactQuestRow({
     type?: EventLogType,
     meta?: { cityName?: string }
   ) => void;
+  onDragStartRow: (e: React.DragEvent) => void;
+  onDragOverRow: (e: React.DragEvent) => void;
+  onDropRow: (e: React.DragEvent) => void;
+  onDragEndRow: () => void;
 }) {
   const titleSnap = useRef(quest.title);
   const expSnap = useRef(quest.expReward);
   const stSnap = useRef(quest.staminaCost);
+  const maxDaySnap = useRef(quest.maxCompletionsPerDay ?? 1);
 
   const logNumericChange = (label: "功勋" | "体力") => {
     const latest = useQuestStore
@@ -861,6 +937,24 @@ function CompactQuestRow({
     stSnap.current = latest.staminaCost;
   };
 
+  const onMaxDayFocus = () => {
+    maxDaySnap.current = quest.maxCompletionsPerDay ?? 1;
+  };
+  const onMaxDayBlur = () => {
+    const latest = useQuestStore
+      .getState()
+      .quests.find((q) => q.id === quest.id);
+    if (!latest) return;
+    const cur = latest.maxCompletionsPerDay ?? 1;
+    if (cur !== maxDaySnap.current) {
+      addLog(
+        `枢密院：已调整《${latest.title}》本日勘合上限（${cur}）`,
+        "decree"
+      );
+    }
+    maxDaySnap.current = cur;
+  };
+
   const onRowRemove = () => {
     if (
       typeof window !== "undefined" &&
@@ -878,10 +972,24 @@ function CompactQuestRow({
   return (
     <div
       className={cn(
-        "grid grid-cols-1 gap-2 border-b border-slate-800/80 py-2 last:border-0 sm:grid-cols-[auto_minmax(0,1fr)_6.5rem_4.5rem_4.5rem_auto]",
+        "grid grid-cols-1 gap-2 border-b border-slate-800/80 py-2 last:border-0 sm:grid-cols-[auto_auto_minmax(0,1fr)_6.5rem_3.25rem_4.5rem_4.5rem_auto]",
         "items-center px-1 sm:gap-2 sm:px-2"
       )}
+      onDragOver={onDragOverRow}
+      onDrop={onDropRow}
+      onDragEnd={onDragEndRow}
     >
+      <div
+        className="hidden cursor-grab items-center justify-center self-center active:cursor-grabbing sm:flex"
+        draggable
+        onDragStart={onDragStartRow}
+        role="button"
+        tabIndex={0}
+        aria-label={`拖动调整顺序：${quest.title}`}
+        title="拖动排序（仅同时辰内有效）"
+      >
+        <GripVertical className="h-4 w-4 text-slate-600" aria-hidden />
+      </div>
       <div className="flex items-center justify-start sm:justify-center">
         <Checkbox
           checked={selected}
@@ -915,6 +1023,28 @@ function CompactQuestRow({
           ))}
         </SelectContent>
       </Select>
+      <div className="flex flex-col gap-0.5 sm:contents">
+        <Label className="text-[10px] text-slate-500 sm:sr-only">日限</Label>
+        <Input
+          type="number"
+          min={1}
+          max={99}
+          title="本自然日每城最多勘合次数"
+          aria-label={`${quest.title} 本日勘合上限`}
+          value={quest.maxCompletionsPerDay ?? 1}
+          onChange={(e) =>
+            updateQuest(quest.id, {
+              maxCompletionsPerDay: Math.min(
+                99,
+                Math.max(1, Number.parseInt(e.target.value, 10) || 1)
+              ),
+            })
+          }
+          onFocus={onMaxDayFocus}
+          onBlur={onMaxDayBlur}
+          className={cn("w-full tabular-nums", cell)}
+        />
+      </div>
       <Input
         type="number"
         min={0}
