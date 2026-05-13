@@ -100,7 +100,7 @@ export function ImperialPhysicianReview() {
               太医院复盘
             </DialogTitle>
             <DialogDescription className="text-slate-400">
-              汇总今日政务、疆域与邸报，封装为起居注 Markdown。
+              汇总今日政务、九州图志与邸报，封装为起居注 Markdown。
             </DialogDescription>
           </DialogHeader>
 

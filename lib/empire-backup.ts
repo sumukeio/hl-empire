@@ -45,6 +45,14 @@ function parseLogRevert(r: Record<string, unknown>): EventLog["revert"] | undefi
     typeof o.tokensSubtracted === "number" && Number.isFinite(o.tokensSubtracted)
       ? Math.max(0, o.tokensSubtracted)
       : 0;
+  const postDopaminePool =
+    typeof o.postDopaminePool === "number" && Number.isFinite(o.postDopaminePool)
+      ? Math.max(0, Math.min(14, Math.floor(o.postDopaminePool)))
+      : undefined;
+  const dopamineExpFed =
+    typeof o.dopamineExpFed === "number" && Number.isFinite(o.dopamineExpFed)
+      ? Math.max(0, Math.floor(o.dopamineExpFed))
+      : undefined;
   if (!cityId || !questId) return undefined;
   return {
     kind: "quest_complete",
@@ -53,6 +61,8 @@ function parseLogRevert(r: Record<string, unknown>): EventLog["revert"] | undefi
     staminaRestored,
     expSubtracted,
     tokensSubtracted,
+    ...(postDopaminePool !== undefined ? { postDopaminePool } : {}),
+    ...(dopamineExpFed !== undefined ? { dopamineExpFed } : {}),
   };
 }
 
@@ -68,6 +78,8 @@ export type EmpireBackupV1 = {
     health: number;
     martialArts: number;
     tokens: number;
+    /** 军机功勋多巴胺池余量（0–14）；旧密函可无此字段，导入时按 0 */
+    dopaminePool?: number;
     isDressed: boolean;
     isEntertaining: boolean;
     entertainmentDeadline: number | null;
@@ -77,6 +89,8 @@ export type EmpireBackupV1 = {
     privateVault: number;
     literature: number;
     isNomadMode: boolean;
+    /** 军费余额；旧密函可无，导入时按 0 */
+    militaryFunds?: number;
   };
   map: { cities: City[] };
   quest: { quests: Quest[]; lastLoginDate: string; activeCityId: string | null };
@@ -109,6 +123,10 @@ export function collectEmpireBackup(): EmpireBackupV1 {
       health: e.health,
       martialArts: e.martialArts,
       tokens: e.tokens,
+      dopaminePool:
+        typeof e.dopaminePool === "number" && Number.isFinite(e.dopaminePool)
+          ? Math.max(0, Math.min(14, Math.floor(e.dopaminePool)))
+          : 0,
       isDressed: e.isDressed,
       isEntertaining: e.isEntertaining,
       entertainmentDeadline: e.entertainmentDeadline,
@@ -118,6 +136,10 @@ export function collectEmpireBackup(): EmpireBackupV1 {
       privateVault: e.privateVault,
       literature: e.literature,
       isNomadMode: e.isNomadMode,
+      militaryFunds:
+        typeof e.militaryFunds === "number" && Number.isFinite(e.militaryFunds)
+          ? Math.max(0, Math.floor(e.militaryFunds))
+          : 0,
     },
     map: { cities: [...useMapStore.getState().cities] },
     quest: {
@@ -216,6 +238,10 @@ export function parseEmpireBackupJson(
         : 10,
     tokens:
       typeof e.tokens === "number" && Number.isFinite(e.tokens) ? Math.max(0, e.tokens) : 0,
+    dopaminePool:
+      typeof e.dopaminePool === "number" && Number.isFinite(e.dopaminePool)
+        ? Math.max(0, Math.min(14, Math.floor(e.dopaminePool)))
+        : 0,
     isDressed: typeof e.isDressed === "boolean" ? e.isDressed : true,
     isEntertaining: typeof e.isEntertaining === "boolean" ? e.isEntertaining : false,
     entertainmentDeadline:
@@ -243,6 +269,10 @@ export function parseEmpireBackupJson(
         ? Math.max(0, e.literature)
         : 10,
     isNomadMode: typeof e.isNomadMode === "boolean" ? e.isNomadMode : false,
+    militaryFunds:
+      typeof e.militaryFunds === "number" && Number.isFinite(e.militaryFunds)
+        ? Math.max(0, Math.floor(e.militaryFunds))
+        : 0,
   };
   emperor.level = computeLevelFromExp(emperor.exp);
 

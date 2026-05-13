@@ -4,8 +4,16 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { buildEmperorTitlePromotionMessage } from "@/lib/emperor-title";
 
 import { useEventStore } from "./event-store";
+import type {
+  CityDailyReportData,
+  RecordExpenseInput,
+  SubmitCityReportResult,
+} from "./types";
 
 const EXP_PER_LEVEL = 100;
+
+/** 功勋注入「多巴胺池」后，每满此值铸 1 张翻牌券（余量留在池中） */
+export const DOPAMINE_ENERGY_PER_TICKET = 15;
 
 const ENTERTAINMENT_MS = 20 * 60 * 1000;
 
@@ -35,9 +43,13 @@ export interface EmperorState {
   health: number;
   /** 武术 / 执行力（默认 10） */
   martialArts: number;
-  /** 翻牌券（完成军机任务发放） */
+  /** 翻牌券（由军机功勋注入多巴胺池后凝结发放） */
   tokens: number;
-  /** 宣政殿 true = 已着朝服，可操作；养心殿 false = 睡衣，沙盘遮罩 */
+  /**
+   * 多巴胺能量池余量（0–14）：军机功勋仅写入此池，满 15 铸 1 券并入 `tokens`。
+   */
+  dopaminePool: number;
+  /** 宣政殿 true = 已着朝服，可操作；养心殿 false = 睡衣，九州图志遮罩 */
   isDressed: boolean;
   /** 娱乐倒计时进行中 */
   isEntertaining: boolean;
@@ -55,14 +67,35 @@ export interface EmperorState {
   literature: number;
   /** 移动行宫：在酒店/咖啡馆办公；开启时 MVA 军机功勋 +20%（见 quest-store） */
   isNomadMode: boolean;
+  /** 军费余额（百度余额）；战报消耗从此扣，由国库 `allocateFunds` 拨入 */
+  militaryFunds: number;
 }
 
 export interface EmperorActions {
   addExp: (amount: number) => void;
+  /**
+   * 军机点卯：将本次获得的功勋量注入多巴胺池，按每 15 点铸翻牌券并写邸报。
+   * @returns 铸券张数、结算后池余量、实际注入量（取整后）
+   */
+  feedDopamineFromQuestReward: (expAmount: number) => {
+    tokensMinted: number;
+    postDopaminePool: number;
+    dopamineExpFed: number;
+  };
   consumeStamina: (amount: number) => void;
+  /** 恢复体力（0–100），不改动 healthCombo */
+  addStamina: (amount: number) => void;
   updateGold: (gold: number | ((prev: number) => number)) => void;
-  /** 内务府：登记工资/补贴等非业务岁入 */
-  injectGold: (amount: number) => void;
+  /**
+   * 奏折：城池度支(CPA) 上调，从国库按差额支用军饷（见底则实支为当前存银）。
+   * 邸报：【户部】拨付军饷，【城池名】支用 [N] 两。
+   */
+  spendTreasuryForCityCpaIncrease: (
+    cityDisplayName: string,
+    cpaIncrease: number
+  ) => void;
+  /** 内务府：登记工资/补贴等非业务岁入；`silent` 时不写默认岁入邸报（由调用方自拟文案） */
+  injectGold: (amount: number, options?: { silent?: boolean }) => void;
   /** 户部：手动将国库校准为实存现金 */
   syncGold: (total: number) => void;
   updateTroops: (troops: number | ((prev: number) => number)) => void;
@@ -86,11 +119,11 @@ export interface EmperorActions {
   consumeJunkFood: () => void;
   /** 内务府 · 西殿习武（耗体力、涨武力） */
   trainMartialArts: () => void;
-  /** 内务府 · 户部：工部拨款 / 骄奢淫逸 */
-  recordExpense: (
-    amount: number,
-    type: "infrastructure" | "decadence"
-  ) => boolean;
+  /**
+   * 内务府 · 户部：个人支用 / 资产配置。
+   * 银两按入账数额 1:1 从 `gold` 扣除；按分类联动体力、文学、民心、多巴胺池并写邸报。
+   */
+  recordExpense: (input: RecordExpenseInput) => boolean;
   /** 内务府 · 户部：副业利润转入私库 */
   transferToPrivateVault: (amount: number) => boolean;
   /** 内务府 · 理藩院：国子监/太庙（私库≥500） */
@@ -110,7 +143,16 @@ export interface EmperorActions {
     staminaRestored: number;
     expSubtracted: number;
     tokensSubtracted: number;
+    postDopaminePool?: number;
+    dopamineExpFed?: number;
   }) => void;
+  /** 国库 → 军费：从 `gold` 拨入 `militaryFunds` */
+  allocateFunds: (amount: number) => boolean;
+  /** 城池日结战报（委托 map-store，扣军费并累加城池数据） */
+  submitCityReport: (
+    cityId: string,
+    dailyData: CityDailyReportData
+  ) => SubmitCityReportResult;
 }
 
 const defaultState: EmperorState = {
@@ -122,6 +164,7 @@ const defaultState: EmperorState = {
   health: 100,
   martialArts: 10,
   tokens: 0,
+  dopaminePool: 0,
   isDressed: true,
   isEntertaining: false,
   entertainmentDeadline: null,
@@ -131,6 +174,7 @@ const defaultState: EmperorState = {
   privateVault: 0,
   literature: 10,
   isNomadMode: false,
+  militaryFunds: 0,
 };
 
 export const useEmperorStore = create<EmperorState & EmperorActions>()(
@@ -146,9 +190,53 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         });
         emitEmperorTitleTierPromotion(prevExp, get().exp);
       },
+      feedDopamineFromQuestReward: (expAmount) => {
+        const E = Math.max(
+          0,
+          Math.min(9999, Math.floor(Number.isFinite(expAmount) ? expAmount : 0))
+        );
+        if (E <= 0) {
+          const pool = clamp(Math.floor(get().dopaminePool), 0, 14);
+          return {
+            tokensMinted: 0,
+            postDopaminePool: pool,
+            dopamineExpFed: 0,
+          };
+        }
+        let tokensMinted = 0;
+        let postDopaminePool = 0;
+        set((s) => {
+          const P0 = clamp(Math.floor(s.dopaminePool), 0, 14);
+          const total = P0 + E;
+          tokensMinted = Math.floor(total / DOPAMINE_ENERGY_PER_TICKET);
+          postDopaminePool = total % DOPAMINE_ENERGY_PER_TICKET;
+          return {
+            dopaminePool: postDopaminePool,
+            tokens: s.tokens + tokensMinted,
+          };
+        });
+        if (tokensMinted > 0) {
+          useEventStore.getState().addLog(
+            `【内务府】由于圣上勤政，多巴胺能量已凝结，获得 ${tokensMinted.toLocaleString("zh-CN")} 张翻牌券。`,
+            "treasury",
+            { emphasis: "goldFlash" }
+          );
+        }
+        return {
+          tokensMinted,
+          postDopaminePool,
+          dopamineExpFed: E,
+        };
+      },
       consumeStamina: (amount) => {
         if (amount <= 0) return;
         set((s) => ({ stamina: Math.max(0, s.stamina - amount) }));
+      },
+      addStamina: (amount) => {
+        if (amount <= 0) return;
+        set((s) => ({
+          stamina: clamp(s.stamina + amount, 0, 100),
+        }));
       },
       updateGold: (updater) =>
         set((s) => ({
@@ -157,15 +245,59 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
               ? (updater as (prev: number) => number)(s.gold)
               : updater,
         })),
-      injectGold: (amount) => {
+      spendTreasuryForCityCpaIncrease: (cityDisplayName, cpaIncrease) => {
+        const inc = Math.max(
+          0,
+          Math.floor(Number.isFinite(cpaIncrease) ? cpaIncrease : 0)
+        );
+        if (inc <= 0) return;
+        const name = cityDisplayName.trim() || "本城";
+        const prevGold = get().gold;
+        const spent = Math.min(Math.max(0, prevGold), inc);
+        if (spent <= 0) {
+          useEventStore.getState().addLog(
+            `【户部】拨付军饷，【${name}】拟支用 ${inc.toLocaleString("zh-CN")} 两，然国库空虚，未能拨付。`,
+            "treasury"
+          );
+          return;
+        }
+        set((s) => ({ gold: Math.max(0, s.gold - spent) }));
+        const short = spent < inc;
+        useEventStore.getState().addLog(
+          short
+            ? `【户部】拨付军饷，【${name}】支用 ${spent.toLocaleString("zh-CN")} 两（国库存银不足，尚欠 ${(inc - spent).toLocaleString("zh-CN")} 两未拨）。`
+            : `【户部】拨付军饷，【${name}】支用 ${spent.toLocaleString("zh-CN")} 两。`,
+          "treasury"
+        );
+      },
+      allocateFunds: (amount) => {
+        const n = Math.floor(
+          Number.isFinite(amount) ? (amount as number) : 0
+        );
+        if (n <= 0) return false;
+        const s = get();
+        if (s.gold < n) return false;
+        set((st) => ({
+          gold: st.gold - n,
+          militaryFunds: Math.max(0, Math.floor(st.militaryFunds ?? 0)) + n,
+        }));
+        useEventStore.getState().addLog(
+          `【户部】圣上御笔亲批，拨付 ${n.toLocaleString("zh-CN")} 两银钱充作军费，粮草已运往前线。`,
+          "treasury"
+        );
+        return true;
+      },
+      injectGold: (amount, options) => {
         if (!Number.isFinite(amount) || amount <= 0) return;
         const n = Math.floor(amount);
         if (n <= 0) return;
         set((s) => ({ gold: s.gold + n }));
-        useEventStore.getState().addLog(
-          `【内务府】岁入拨入 ${n.toLocaleString("zh-CN")} 两。`,
-          "treasury"
-        );
+        if (!options?.silent) {
+          useEventStore.getState().addLog(
+            `【内务府】岁入拨入 ${n.toLocaleString("zh-CN")} 两，国库充盈。`,
+            "treasury"
+          );
+        }
       },
       syncGold: (total) => {
         if (!Number.isFinite(total)) return;
@@ -303,28 +435,76 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           .getState()
           .addLog("圣上御花园习武，筋骨强健，武力提升！", "decree");
       },
-      recordExpense: (amount, type) => {
-        if (!Number.isFinite(amount) || amount <= 0) return false;
-        const cost = type === "decadence" ? amount * 2 : amount;
-        const s = get();
-        if (s.gold < cost) return false;
-        const log = useEventStore.getState().addLog;
-        if (type === "infrastructure") {
-          set({ gold: s.gold - cost });
-          log(
-            `工部拨款 ${Math.round(amount)} 两，充实帝国基建，物尽其用。`,
-            "treasury"
-          );
-        } else {
-          set({
-            gold: s.gold - cost,
-            morale: clamp(s.morale - 10, 0, 100),
-          });
-          log(
-            "朝野非议！圣上骄奢淫逸，挥霍无度，折损国库与民心！",
-            "battle"
-          );
+      recordExpense: (input) => {
+        const amount = Math.max(
+          0,
+          Math.floor(Number.isFinite(input.amount) ? input.amount : 0)
+        );
+        if (amount <= 0) return false;
+        const s0 = get();
+        if (s0.gold < amount) return false;
+        const cornerstone = input.cornerstone === true;
+        const dest =
+          (input.travelDestination ?? "").trim().slice(0, 32) || "九州";
+        const amt = amount.toLocaleString("zh-CN");
+
+        let baseMsg = "";
+        switch (input.category) {
+          case "imperial_provisions":
+            baseMsg = `【御膳房】圣上进补抗炎灵食，支用 ${amt} 两，体力充沛。`;
+            break;
+          case "digital_gear":
+            baseMsg = `【工部】圣上选购神机利器，支用 ${amt} 两，功倍事半，文学修养提升。`;
+            break;
+          case "wardrobe":
+            baseMsg = `【尚衣监】圣上整肃衣冠，支用 ${amt} 两，仪容得体，民心称善。`;
+            break;
+          case "imperial_travel":
+            baseMsg = `【礼部】圣上九州问道（${dest}），支用 ${amt} 两，鉴古通今，文学修养大幅提升。`;
+            break;
+          case "infrastructure":
+            baseMsg = `【户部】圣上支用 ${amt} 两，充实九州基建，固本培元。`;
+            break;
+          default:
+            return false;
         }
+        if (cornerstone) baseMsg += "（镇国利器）";
+
+        set((s) => {
+          if (s.gold < amount) return s;
+          let stamina = s.stamina;
+          let literature = s.literature;
+          let morale = s.morale;
+          let dopaminePool = clamp(Math.floor(s.dopaminePool), 0, 14);
+
+          if (input.category === "imperial_provisions") {
+            stamina = clamp(s.stamina + 20, 0, 100);
+          }
+          if (input.category === "digital_gear") {
+            literature = s.literature + 5;
+          }
+          if (input.category === "wardrobe") {
+            morale = s.morale + 5;
+          }
+          if (input.category === "imperial_travel") {
+            literature = s.literature + 10;
+            dopaminePool = clamp(dopaminePool + 5, 0, 14);
+          }
+          if (cornerstone) {
+            morale += 2;
+          }
+          morale = clamp(morale, 0, 100);
+
+          return {
+            gold: s.gold - amount,
+            stamina,
+            literature,
+            morale,
+            dopaminePool,
+          };
+        });
+
+        useEventStore.getState().addLog(baseMsg, "treasury");
         return true;
       },
       transferToPrivateVault: (amount) => {
@@ -336,7 +516,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           privateVault: s.privateVault + amount,
         });
         useEventStore.getState().addLog(
-          `岁入充盈，转存 ${Math.round(amount)} 两至皇室私库，为巡游天下积蓄粮草。`,
+          `【户部】支用 ${Math.round(amount).toLocaleString("zh-CN")} 两，转存皇室私库，为巡游天下积蓄粮草。`,
           "treasury",
           { emphasis: "goldFlash" }
         );
@@ -426,18 +606,40 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         staminaRestored,
         expSubtracted,
         tokensSubtracted,
+        postDopaminePool,
+        dopamineExpFed,
       }) => {
         set((s) => {
           const stamina = clamp(s.stamina + staminaRestored, 0, 100);
           const exp = Math.max(0, s.exp - expSubtracted);
           const tokens = Math.max(0, s.tokens - tokensSubtracted);
+          let dopaminePool = s.dopaminePool;
+          if (
+            typeof postDopaminePool === "number" &&
+            Number.isFinite(postDopaminePool) &&
+            typeof dopamineExpFed === "number" &&
+            Number.isFinite(dopamineExpFed)
+          ) {
+            const k = Math.max(0, Math.floor(tokensSubtracted));
+            const P1 = clamp(Math.floor(postDopaminePool), 0, 14);
+            const fed = Math.max(0, Math.floor(dopamineExpFed));
+            const pre =
+              DOPAMINE_ENERGY_PER_TICKET * k + P1 - fed;
+            dopaminePool = clamp(pre, 0, 14);
+          }
           return {
             stamina,
             exp,
             level: computeLevelFromExp(exp),
             tokens,
+            dopaminePool,
           };
         });
+      },
+      submitCityReport: (cityId, dailyData) => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- 避免 emperor ↔ map 循环依赖
+        const { useMapStore } = require("./map-store") as typeof import("./map-store");
+        return useMapStore.getState().submitCityReport(cityId, dailyData);
       },
     }),
     {
@@ -453,6 +655,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         health: s.health,
         martialArts: s.martialArts,
         tokens: s.tokens,
+        dopaminePool: s.dopaminePool,
         isDressed: s.isDressed,
         isEntertaining: s.isEntertaining,
         entertainmentDeadline: s.entertainmentDeadline,
@@ -462,6 +665,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         privateVault: s.privateVault,
         literature: s.literature,
         isNomadMode: s.isNomadMode,
+        militaryFunds: s.militaryFunds,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<EmperorState> | undefined;
@@ -478,6 +682,10 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
             ? Math.max(0, p.martialArts)
             : 10;
         const tokens = typeof p.tokens === "number" ? p.tokens : current.tokens;
+        const dopaminePool =
+          typeof p.dopaminePool === "number" && Number.isFinite(p.dopaminePool)
+            ? clamp(Math.floor(p.dopaminePool), 0, 14)
+            : 0;
         const isDressed =
           typeof p.isDressed === "boolean" ? p.isDressed : current.isDressed;
         const isEntertaining =
@@ -510,6 +718,10 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
             : 10;
         const isNomadMode =
           typeof p.isNomadMode === "boolean" ? p.isNomadMode : current.isNomadMode;
+        const militaryFunds =
+          typeof p.militaryFunds === "number" && Number.isFinite(p.militaryFunds)
+            ? Math.max(0, Math.floor(p.militaryFunds))
+            : current.militaryFunds;
 
         return {
           ...current,
@@ -520,6 +732,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           health,
           martialArts,
           tokens,
+          dopaminePool,
           isDressed,
           isEntertaining,
           entertainmentDeadline,
@@ -529,6 +742,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           privateVault,
           literature,
           isNomadMode,
+          militaryFunds,
           level: computeLevelFromExp(exp),
         };
       },

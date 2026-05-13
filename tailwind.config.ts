@@ -68,12 +68,19 @@ const config: Config = {
           "0%, 100%": { opacity: "1", filter: "brightness(1)" },
           "50%": { opacity: "0.72", filter: "brightness(1.25)" },
         },
+        "imperial-token-pop": {
+          "0%": { transform: "scale(1)" },
+          "40%": { transform: "scale(1.12)" },
+          "70%": { transform: "scale(0.96)" },
+          "100%": { transform: "scale(1)" },
+        },
       },
       animation: {
         "imperial-gold-glow":
           "imperial-gold-glow 2.4s ease-in-out infinite",
         "imperial-vitals-alert":
           "imperial-vitals-alert 1.05s ease-in-out infinite",
+        "imperial-token-pop": "imperial-token-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)",
       },
     },
   },

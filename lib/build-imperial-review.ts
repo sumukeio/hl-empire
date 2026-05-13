@@ -32,11 +32,11 @@ export function buildImperialReviewMarkdown(input: ImperialReviewInput): string 
               c.memo?.trim() ? c.memo.trim() : "（无）";
             return `### ${c.name}${aliasLine}
 - 态势: ${statusLabel(c.status)}
-- 度支(CPA): ${c.cpa} | 粮饷(Orders): ${c.orders}
+- 度支 (CPA): ${c.cpa} | 线索 (粉): ${Math.max(0, Math.floor(c.leads ?? 0))} | 粮饷 (单): ${c.orders}
 - 军机备忘: ${memo}`;
           })
           .join("\n\n")
-      : "_（今日疆域无已探明之城池，status 均为 0）_";
+      : "_（今日征战目标无已探明之城池，status 均为 0）_";
 
   const logLine =
     input.todayLogs.length > 0
@@ -48,7 +48,7 @@ export function buildImperialReviewMarkdown(input: ImperialReviewInput): string 
 - **功勋/体力**: ${input.exp} / ${input.stamina}
 - **执行政务**: ${tasksLine}
 
-## 🏰 疆域实况
+## 🏰 九州图志·征战目标实况
 ${cityBlocks}
 
 ## 📜 邸报摘要

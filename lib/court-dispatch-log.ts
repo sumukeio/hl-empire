@@ -1,6 +1,6 @@
 import type { City, Quest } from "@/store/types";
 
-/** 生成军机勘合邸报文案（含疆域别名/城名）。 */
+/** 生成军机勘合邸报文案（含城名/产品别名）。 */
 export function buildCourtDispatchDecree(
   quest: Quest,
   city: City

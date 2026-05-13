@@ -29,6 +29,21 @@ export function applyEventLogRevert(log: EventLog): ApplyRevertResult {
       });
       return { ok: false, reason: "state_mismatch" };
     }
+    const hasDopamine =
+      typeof rev.postDopaminePool === "number" &&
+      Number.isFinite(rev.postDopaminePool) &&
+      typeof rev.dopamineExpFed === "number" &&
+      Number.isFinite(rev.dopamineExpFed);
+    if (hasDopamine) {
+      const pool = useEmperorStore.getState().dopaminePool;
+      if (pool !== rev.postDopaminePool) {
+        console.warn("[Hanling] 邸报撤回：多巴胺池与记录不一致（可能已点卯多次）", {
+          expected: rev.postDopaminePool,
+          actual: pool,
+        });
+        return { ok: false, reason: "state_mismatch" };
+      }
+    }
     const dec = useMapStore.getState().decrementQuestCompletion(rev.cityId, rev.questId);
     if (!dec) {
       console.warn("[Hanling] 邸报撤回：decrementQuestCompletion 未生效", {
@@ -41,6 +56,8 @@ export function applyEventLogRevert(log: EventLog): ApplyRevertResult {
       staminaRestored: rev.staminaRestored,
       expSubtracted: rev.expSubtracted,
       tokensSubtracted: rev.tokensSubtracted,
+      postDopaminePool: rev.postDopaminePool,
+      dopamineExpFed: rev.dopamineExpFed,
     });
     return { ok: true };
   }

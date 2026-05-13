@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -37,11 +36,23 @@ import {
   useQuestStore,
   getQuestDailyCount,
   isQuestFullyCompletedToday,
+  DOPAMINE_ENERGY_PER_TICKET,
 } from "@/store";
 
 const PERIODS: QuestPeriod[] = ["早朝", "晌午", "傍晚", "深夜"];
 
 const NONE_CITY = "__none__";
+
+/** 功勋与翻牌券折算（每 15 功勋 ≈ 1 券） */
+function formatMeritLineWithTicket(exp: number): string {
+  if (exp <= 0) return "功勋 +0";
+  const t = exp / DOPAMINE_ENERGY_PER_TICKET;
+  const ticketLabel =
+    t >= 1 && Math.abs(t - Math.round(t)) < 1e-6
+      ? `${Math.round(t)} 券`
+      : `${Math.round(t * 10) / 10} 券`.replace(/\.0$/, "");
+  return `功勋 +${exp}（${ticketLabel}）`;
+}
 
 function cityMatchesSearch(c: City, raw: string): boolean {
   const q = raw.trim().toLowerCase();
@@ -70,7 +81,6 @@ export function QuestEngine({
   const isDressed = useEmperorStore((s) => s.isDressed);
   const sleepAtYangxinPalace = useEmperorStore((s) => s.sleepAtYangxinPalace);
   const isNomadMode = useEmperorStore((s) => s.isNomadMode);
-  const getEmperor = useEmperorStore.getState;
 
   const [clock, setClock] = useState(() => new Date());
   const [cityDrawerOpen, setCityDrawerOpen] = useState(false);
@@ -149,41 +159,37 @@ export function QuestEngine({
   const cityQuestFull = (q: Quest) =>
     activeCity ? isQuestFullyCompletedToday(activeCity, q) : false;
 
-  const handleCheckedChange = (q: Quest, next: boolean | "indeterminate") => {
-    if (next === "indeterminate") return;
+  /** 点卯一次（未满档）；体力不足时只记邸报提示 */
+  const performQuestCompletion = (q: Quest) => {
     if (!activeCity) return;
     if (isTaskRowDisabled(q)) return;
-    const want = next === true;
     const max = Math.max(1, q.maxCompletionsPerDay ?? 1);
     const count = getQuestDailyCount(activeCity, q.id);
-
-    if (!want) {
-      if (count === 0) return;
-      toggleQuest(q.id, { clearDay: true });
-      return;
-    }
     if (count >= max) return;
 
-    const ok = toggleQuest(q.id);
-    if (!ok) {
+    const result = toggleQuest(q.id);
+    if (result === false) {
       addLog(`体力不足，无法为【${activeCity.alias || activeCity.name}】点卯「${q.title}」。`, "battle", {
         cityName: activeCity.alias?.trim() || activeCity.name,
       });
       return;
     }
+    if (typeof result !== "object" || !("expGain" in result)) {
+      return;
+    }
+    const meta = result;
     const { message, cityName } = buildCourtDispatchDecree(q, activeCity);
-    const emperor = getEmperor();
-    const mvaBonus = emperor.isNomadMode && q.id.startsWith("quest-mva-");
-    const expGain = mvaBonus ? Math.round(q.expReward * 1.2) : q.expReward;
     addLog(message, "decree", {
       cityName,
       revert: {
         kind: "quest_complete",
         cityId: activeCity.id,
         questId: q.id,
-        staminaRestored: q.staminaCost,
-        expSubtracted: expGain,
-        tokensSubtracted: 1,
+        staminaRestored: meta.staminaRestored,
+        expSubtracted: meta.expGain,
+        tokensSubtracted: meta.tokensMinted,
+        postDopaminePool: meta.postDopaminePool,
+        dopamineExpFed: meta.dopamineExpFed,
       },
     });
   };
@@ -348,7 +354,9 @@ export function QuestEngine({
           </p>
         ) : null}
         {cities.length === 0 ? (
-          <p className="text-[11px] text-slate-500">疆域暂无城池，请至造办处疆域司扩建。</p>
+          <p className="text-[11px] text-slate-500">
+            图志暂无征战目标，请至造办处图志司扩建。
+          </p>
         ) : null}
       </div>
 
@@ -385,53 +393,70 @@ export function QuestEngine({
                   const max = Math.max(1, q.maxCompletionsPerDay ?? 1);
                   const count = cityQuestCount(q);
                   const doneFull = cityQuestFull(q);
-                  const checked: boolean | "indeterminate" = doneFull
-                    ? true
+                  const canComplete = !rowDisabled && !doneFull;
+                  const displayBase =
+                    isNomadMode && q.id.startsWith("quest-mva-")
+                      ? Math.round(q.expReward * 1.2)
+                      : q.expReward;
+                  const agriLvBuff = Math.max(
+                    0,
+                    Math.min(10, Math.floor(activeCity?.agriLevel ?? 0))
+                  );
+                  const displayExp = Math.max(
+                    0,
+                    Math.round(displayBase * (1 + agriLvBuff * 0.05))
+                  );
+                  const actionLabel = doneFull
+                    ? "本日已办满"
                     : count > 0
-                      ? "indeterminate"
-                      : false;
+                      ? "再办一次"
+                      : "点卯";
                   return (
                     <li key={q.id}>
                       <div
                         className={cn(
-                          "flex items-start gap-3 rounded-md px-2 py-2 transition-colors",
-                          rowDisabled
-                            ? "cursor-not-allowed opacity-50"
-                            : "cursor-pointer hover:bg-muted/50",
-                          doneFull && !rowDisabled && "opacity-75"
+                          "flex items-center gap-3 rounded-md px-2 py-2 transition-colors",
+                          rowDisabled && "opacity-50",
+                          !rowDisabled && "hover:bg-muted/40"
                         )}
                       >
-                        <Checkbox
-                          id={q.id}
-                          checked={checked}
-                          disabled={rowDisabled}
-                          onCheckedChange={(v) => handleCheckedChange(q, v)}
-                          className="mt-0.5 border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
-                        />
-                        <Label
-                          htmlFor={q.id}
-                          className={cn(
-                            "flex flex-1 flex-col gap-0.5 text-sm font-normal leading-snug",
-                            rowDisabled && "cursor-not-allowed",
-                            !rowDisabled && "cursor-pointer",
-                            doneFull &&
-                              "text-muted-foreground line-through decoration-muted-foreground/80"
-                          )}
-                        >
-                          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span>{q.title}</span>
-                            <span className="text-[10px] font-medium uppercase tracking-wide text-imperial-gold/90 no-underline">
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-snug">
+                            <span
+                              className={cn(
+                                "font-medium text-foreground",
+                                doneFull &&
+                                  "text-muted-foreground line-through decoration-muted-foreground/80"
+                              )}
+                            >
+                              {q.title}
+                            </span>
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-imperial-gold/90">
                               {doneFull
                                 ? `本城已办满（${max}/${max}）`
                                 : count > 0
                                   ? `本城已办 ${count}/${max}`
-                                  : "本城未办"}
+                                  : max > 1
+                                    ? `本城未办（0/${max}）`
+                                    : "本城未办"}
                             </span>
-                          </span>
-                          <span className="text-[10px] text-muted-foreground no-underline">
-                            功勋 +{q.expReward} · 体力 −{q.staminaCost}
-                          </span>
-                        </Label>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            {formatMeritLineWithTicket(displayExp)} · 体力 −
+                            {q.staminaCost}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={doneFull ? "secondary" : "default"}
+                          disabled={!canComplete}
+                          className="h-9 shrink-0 px-3"
+                          onClick={() => performQuestCompletion(q)}
+                          aria-label={`${q.title}：${actionLabel}`}
+                        >
+                          {actionLabel}
+                        </Button>
                       </div>
                     </li>
                   );
@@ -457,7 +482,7 @@ export function QuestEngine({
           军机处
         </h2>
         <p className="text-xs text-muted-foreground">
-          先定主攻城池 · 按时辰点卯 · 功勋记入圣躬
+          先定主攻城池 · 按时辰点卯（点「点卯 / 再办一次」）· 功勋记入圣躬
         </p>
         {isNomadMode ? (
           <p className="mt-1 text-[10px] font-medium text-imperial-gold">

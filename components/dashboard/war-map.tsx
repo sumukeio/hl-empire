@@ -9,7 +9,7 @@ import {
   type ComponentPropsWithoutRef,
   type MouseEventHandler,
 } from "react";
-import { AlertTriangle, MapPinned } from "lucide-react";
+import { AlertTriangle, Coins, MapPinned, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,7 @@ import {
   cityStatusDotClass,
 } from "@/lib/city-status";
 import type { City, CityStatus } from "@/store/types";
-import { useEmperorStore, useEventStore, useMapStore, useQuestStore } from "@/store";
+import { useEventStore, useMapStore, useQuestStore } from "@/store";
 import { CityImperialProgress } from "./city-imperial-progress";
 
 const STATUS_ORDER: CityStatus[] = [0, 1, 2, 3];
@@ -45,10 +45,17 @@ const STATUS_ORDER: CityStatus[] = [0, 1, 2, 3];
 const fieldShell =
   "border-slate-700/80 bg-slate-900/80 text-slate-100 placeholder:text-slate-500 focus-visible:border-imperial-gold/40 focus-visible:ring-imperial-gold/30";
 
+function sanitizeNonNegIntString(raw: string): string {
+  if (raw === "" || raw === "-") return "0";
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return "0";
+  return String(Math.floor(n));
+}
+
 export type WarMapProps = {
   locateCityId?: string | null;
   onLocateCityDone?: () => void;
-  /** 养心殿睡衣：中央沙盘网格半透明遮罩并禁止点城 */
+  /** 养心殿睡衣：九州图志网格半透明遮罩并禁止点城 */
   showPajamaOverlay?: boolean;
 };
 
@@ -59,8 +66,11 @@ export function WarMap({
 }: WarMapProps) {
   const cities = useMapStore((s) => s.cities);
   const updateCity = useMapStore((s) => s.updateCity);
+  const tourCityAction = useMapStore((s) => s.tourCity);
+  const submitCityReport = useMapStore((s) => s.submitCityReport);
   const addLog = useEventStore((s) => s.addLog);
   const quests = useQuestStore((s) => s.quests);
+  const lastLoginDate = useQuestStore((s) => s.lastLoginDate);
 
   const [openId, setOpenId] = useState<string | null>(null);
   const active = useMemo(
@@ -75,7 +85,10 @@ export function WarMap({
   const [draftTroops, setDraftTroops] = useState("0");
   const [draftEquipments, setDraftEquipments] = useState("0");
   const [draftStatus, setDraftStatus] = useState<CityStatus>(0);
-  /** 沙盘态势多选筛选；空集表示不筛选（显示全部） */
+  const [draftReportSpend, setDraftReportSpend] = useState("0");
+  const [draftReportLeads, setDraftReportLeads] = useState("0");
+  const [draftReportOrders, setDraftReportOrders] = useState("0");
+  /** 征战态势多选筛选；空集表示不筛选（显示全部） */
   const [statusFilter, setStatusFilter] = useState<Set<CityStatus>>(
     () => new Set<CityStatus>([2])
   );
@@ -117,7 +130,17 @@ export function WarMap({
     setDraftTroops(String(active.troops));
     setDraftEquipments(String(active.equipments));
     setDraftStatus(active.status);
+    setDraftReportSpend("0");
+    setDraftReportLeads("0");
+    setDraftReportOrders("0");
   }, [active]);
+
+  useEffect(() => {
+    if (!openId) return;
+    setDraftReportSpend("0");
+    setDraftReportLeads("0");
+    setDraftReportOrders("0");
+  }, [lastLoginDate, openId]);
 
   useEffect(() => {
     if (openId && !visibleCities.some((c) => c.id === openId)) {
@@ -152,14 +175,30 @@ export function WarMap({
     return () => window.clearTimeout(t);
   }, [locateCityId, onLocateCityDone]);
 
+  const dailyBattlePreview = useMemo(() => {
+    const spend = Math.max(
+      0,
+      Math.floor(Number.parseInt(draftReportSpend, 10) || 0)
+    );
+    const leads = Math.max(
+      0,
+      Math.floor(Number.parseInt(draftReportLeads, 10) || 0)
+    );
+    const orders = Math.max(
+      0,
+      Math.floor(Number.parseInt(draftReportOrders, 10) || 0)
+    );
+    const costPerLead =
+      leads > 0 && spend > 0 ? spend / leads : null;
+    return { spend, leads, orders, costPerLead };
+  }, [draftReportSpend, draftReportLeads, draftReportOrders]);
+
   const save = () => {
     if (!active) return;
     const cpa = Math.max(0, Number.parseInt(draftCpa, 10) || 0);
     const orders = Math.max(0, Number.parseInt(draftOrders, 10) || 0);
     const troops = Math.max(0, Number.parseInt(draftTroops, 10) || 0);
     const equipments = Math.max(0, Number.parseInt(draftEquipments, 10) || 0);
-    const prevCpa = active.cpa;
-    const cpaIncrease = Math.max(0, cpa - prevCpa);
     updateCity(active.id, {
       memo: draftMemo.trim(),
       alias: draftAlias.trim(),
@@ -169,20 +208,7 @@ export function WarMap({
       equipments,
       status: draftStatus,
     });
-    if (cpaIncrease > 0) {
-      const emperor = useEmperorStore.getState();
-      const prevGold = emperor.gold;
-      const nextGold = Math.max(0, prevGold - cpaIncrease);
-      emperor.updateGold(nextGold);
-      const spent = prevGold - nextGold;
-      addLog(`朱批已下发至【${active.name}】`, "decree");
-      addLog(
-        `户部度支：【${active.name}】度支(CPA) 上调 ${cpaIncrease.toLocaleString("zh-CN")}，国库拨银支用 ${spent.toLocaleString("zh-CN")} 两${spent < cpaIncrease ? "（存银已见底）。" : "。"}`,
-        "treasury"
-      );
-    } else {
-      addLog(`朱批已下发至【${active.name}】`, "decree");
-    }
+    addLog(`朱批已下发至【${active.name}】`, "decree");
     close();
   };
 
@@ -191,12 +217,15 @@ export function WarMap({
     <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground">
-            <MapPinned className="h-5 w-5 text-imperial-gold" />
-            中央沙盘
+          <h2 className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-lg font-semibold tracking-tight text-foreground">
+            <MapPinned className="h-5 w-5 shrink-0 text-imperial-gold" />
+            <span>九州图志</span>
+            <span className="text-xs font-normal text-muted-foreground sm:text-sm">
+              (The World Atlas)
+            </span>
           </h2>
           <p className="text-xs text-muted-foreground">
-            疆域 {cities.length} 座
+            征战目标 {cities.length} 座
             {effectiveStatusFilter ? (
               <>
                 {" "}
@@ -205,7 +234,7 @@ export function WarMap({
                 座（按所选态势）
               </>
             ) : (
-              <> · 展示全部 {cities.length} 座（未选任何态势标签）</>
+              <> · 展示全部 {cities.length} 座征战目标（未选任何态势标签）</>
             )}
             {" · "}
             点选一城，右侧滑出奏折
@@ -215,6 +244,10 @@ export function WarMap({
           selected={statusFilter}
           counts={statusCounts}
           onToggle={toggleStatusFilter}
+          onFocusImperialTerritory={() => {
+            setStatusFilter(new Set<CityStatus>([3]));
+            addLog("圣上正在阅视帝国版图，检阅已纳之疆土。", "decree");
+          }}
         />
       </div>
 
@@ -228,7 +261,7 @@ export function WarMap({
           <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 xl:grid-cols-5">
           {cities.length === 0 ? (
             <p className="col-span-full rounded-lg border border-dashed border-imperial-gold/25 bg-slate-950/40 px-4 py-10 text-center text-sm text-muted-foreground">
-              暂无城池。请点击顶部「造办处」齿轮 → 疆域司 → 新增城池。
+              暂无城池。请点击顶部「造办处」齿轮 → 图志司 → 新增城池。
             </p>
           ) : visibleCities.length === 0 ? (
             <p className="col-span-full rounded-lg border border-dashed border-imperial-gold/25 bg-slate-950/40 px-4 py-8 text-center text-sm text-muted-foreground">
@@ -299,7 +332,7 @@ export function WarMap({
                 </div>
 
                 <div className="mt-6 space-y-2">
-                  <Label className="text-slate-300">疆域态势</Label>
+                  <Label className="text-slate-300">征战态势</Label>
                   <div className="flex flex-wrap gap-2">
                     {STATUS_ORDER.map((st) => (
                       <Button
@@ -322,6 +355,104 @@ export function WarMap({
                   </div>
                 </div>
 
+                <div className="mt-5 space-y-3 rounded-lg border border-imperial-gold/25 bg-slate-950/50 px-3 py-3">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="text-xs font-semibold tracking-wide text-imperial-gold">
+                      今日战报 (Daily Report)
+                    </h3>
+                    <span className="text-[9px] text-slate-500">
+                      从军费扣「今日消耗」· 累加本城度支 / 线索 / 粮饷
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="battle-spend" className="text-[10px] text-slate-400">
+                        今日消耗 (Daily Spend)
+                      </Label>
+                      <Input
+                        id="battle-spend"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={draftReportSpend}
+                        onChange={(e) =>
+                          setDraftReportSpend(sanitizeNonNegIntString(e.target.value))
+                        }
+                        placeholder="0"
+                        className={cn("h-9 text-sm", fieldShell)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="battle-leads" className="text-[10px] text-slate-400">
+                        今日加粉 (Daily Leads)
+                      </Label>
+                      <Input
+                        id="battle-leads"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={draftReportLeads}
+                        onChange={(e) =>
+                          setDraftReportLeads(sanitizeNonNegIntString(e.target.value))
+                        }
+                        placeholder="0"
+                        className={cn("h-9 text-sm", fieldShell)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="battle-orders" className="text-[10px] text-slate-400">
+                        今日出单 (Daily Orders)
+                      </Label>
+                      <Input
+                        id="battle-orders"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={draftReportOrders}
+                        onChange={(e) =>
+                          setDraftReportOrders(sanitizeNonNegIntString(e.target.value))
+                        }
+                        placeholder="0"
+                        className={cn("h-9 text-sm", fieldShell)}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] leading-relaxed text-slate-400">
+                    今日 CPA（本页录入）：{" "}
+                    <span className="font-medium tabular-nums text-imperial-gold/90">
+                      {dailyBattlePreview.spend.toLocaleString("zh-CN")}
+                    </span>
+                    <span className="mx-2 text-slate-600">·</span>
+                    今日粉成本：
+                    <span className="ml-1 font-medium tabular-nums text-sky-300/90">
+                      {dailyBattlePreview.costPerLead != null
+                        ? `${dailyBattlePreview.costPerLead.toLocaleString("zh-CN", { maximumFractionDigits: 2, minimumFractionDigits: 0 })} 两/人`
+                        : "—（需消耗与加粉均大于 0）"}
+                    </span>
+                  </p>
+                  <Button
+                    type="button"
+                    className="w-full border-imperial-gold/50 bg-imperial-gold/15 text-imperial-gold hover:bg-imperial-gold/25"
+                    onClick={() => {
+                      if (!active) return;
+                      const r = submitCityReport(active.id, {
+                        dailySpend: dailyBattlePreview.spend,
+                        dailyLeads: dailyBattlePreview.leads,
+                        dailyOrders: dailyBattlePreview.orders,
+                      });
+                      if (!r.ok) {
+                        window.alert(r.reason);
+                        return;
+                      }
+                      setDraftReportSpend("0");
+                      setDraftReportLeads("0");
+                      setDraftReportOrders("0");
+                    }}
+                  >
+                    呈报战报
+                  </Button>
+                </div>
+
                 <div className="mt-5">
                   <CityImperialProgress
                     city={active}
@@ -329,6 +460,42 @@ export function WarMap({
                     statusTone={draftStatus}
                   />
                 </div>
+
+                {active.status === 3 ? (
+                  <div className="mt-5 space-y-2 rounded-lg border border-imperial-gold/20 bg-slate-950/40 px-3 py-3">
+                    <Button
+                      type="button"
+                      className={cn(
+                        "w-full border-2 border-imperial-gold/85 bg-amber-950/30 font-medium text-imperial-gold",
+                        "shadow-[0_0_14px_rgba(245,158,11,0.18)] transition-all",
+                        "hover:border-imperial-gold hover:bg-amber-950/50 hover:text-amber-100",
+                        "hover:shadow-[0_0_22px_rgba(245,158,11,0.42)]"
+                      )}
+                      onClick={() => {
+                        const r = tourCityAction(active.id);
+                        if (!r.ok) {
+                          window.alert(r.reason);
+                        }
+                      }}
+                    >
+                      巡幸疆土
+                    </Button>
+                    <p className="text-center text-[10px] leading-relaxed text-slate-400">
+                      <span className="inline-flex items-center gap-0.5">
+                        <Zap className="h-3 w-3 shrink-0 text-amber-400" aria-hidden />
+                        消耗 25 体力
+                      </span>
+                      <span className="mx-1.5 text-slate-600">·</span>
+                      <span className="inline-flex items-center gap-0.5">
+                        <Coins className="h-3 w-3 shrink-0 text-amber-400" aria-hidden />
+                        100 两
+                      </span>
+                      <span className="mt-1 block text-slate-500">
+                        奖励 100 功勋、1 张翻牌券（多巴胺池 +15）、民心 +2
+                      </span>
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="mt-6 space-y-2">
                   <Label htmlFor="city-memo" className="text-slate-300">
@@ -349,7 +516,7 @@ export function WarMap({
                 <div className="mt-6 grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="city-cpa" className="text-slate-300">
-                      度支（CPA）
+                      度支 (CPA)
                     </Label>
                     <Input
                       id="city-cpa"
@@ -361,7 +528,7 @@ export function WarMap({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="city-orders" className="text-slate-300">
-                      粮饷单（Orders）
+                      粮饷 (单)
                     </Label>
                     <Input
                       id="city-orders"
@@ -430,15 +597,28 @@ function StatusFilterBar({
   selected,
   counts,
   onToggle,
+  onFocusImperialTerritory,
 }: {
   selected: Set<CityStatus>;
   counts: Map<CityStatus, number>;
   onToggle: (st: CityStatus) => void;
+  onFocusImperialTerritory: () => void;
 }) {
   return (
-    <div className="flex max-w-full flex-col items-stretch gap-1.5 sm:max-w-[28rem] sm:items-end">
+    <div className="flex max-w-full flex-col items-stretch gap-1.5 sm:max-w-[32rem] sm:items-end">
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 border-amber-700/55 bg-amber-950/35 text-[10px] font-medium text-amber-200 shadow-sm ring-1 ring-amber-600/20 hover:bg-amber-950/55 hover:text-amber-100 sm:text-xs"
+          onClick={onFocusImperialTerritory}
+        >
+          查看帝国版图
+        </Button>
+      </div>
       <p className="text-[10px] text-muted-foreground sm:text-right">
-        态势筛选（可多选；全部取消则显示全城）
+        态势筛选（可多选；全部取消则显示全部征战目标）
       </p>
       <div className="flex flex-wrap gap-1.5 sm:justify-end">
         {STATUS_ORDER.map((st) => {
@@ -489,7 +669,7 @@ const CityTileButton = forwardRef<
       type="button"
       data-city-card={city.id}
       className={cn(
-        "group relative flex flex-col rounded-lg border p-2.5 pr-7 text-left shadow-sm transition",
+        "group relative flex flex-col overflow-hidden rounded-lg border p-2.5 pr-7 text-left shadow-sm transition",
         "hover:ring-1 hover:ring-imperial-gold/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         cityStatusCardClass(city.status),
         city.status === 3 &&
@@ -502,6 +682,18 @@ const CityTileButton = forwardRef<
       }}
       {...rest}
     >
+      {city.status !== 3 ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-[1] rounded-lg bg-slate-950/45 ring-1 ring-inset ring-slate-700/25"
+        />
+      ) : null}
+      <span
+        className={cn(
+          "relative z-[2] flex min-h-0 w-full flex-col",
+          city.status !== 3 && "opacity-[0.88] saturate-[0.72]"
+        )}
+      >
       <div className="flex items-start justify-between gap-1">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold">
           {city.name}
@@ -543,8 +735,11 @@ const CityTileButton = forwardRef<
         </p>
       ) : null}
       <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] opacity-90 sm:text-xs">
-        <span>CPA {city.cpa}</span>
-        <span className="text-right">单 {city.orders}</span>
+        <span>度支 (CPA) {city.cpa}</span>
+        <span className="text-right">粮饷 (单) {city.orders}</span>
+        <span className="col-span-2 text-slate-400">
+          线索 (粉) {Math.max(0, Math.floor(city.leads ?? 0))}
+        </span>
         <span>兵 {city.troops}</span>
         <span className="text-right">械 {city.equipments}</span>
       </div>
@@ -557,6 +752,7 @@ const CityTileButton = forwardRef<
           无备忘
         </p>
       )}
+      </span>
     </button>
   );
 });

@@ -3,8 +3,13 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { todayKey } from "@/lib/today-key";
 import { parseBulkQuestText } from "@/lib/parse-bulk-quest-lines";
+import {
+  classifyIndustrialSectorFromQuestTitle,
+  totalVassalDailyTribute,
+} from "@/lib/city-industry";
 
 import { useEmperorStore } from "./emperor-store";
+import { useEventStore } from "./event-store";
 import { useMapStore, getQuestDailyCount } from "./map-store";
 import type { Quest, QuestPatch, QuestPeriod } from "./types";
 
@@ -263,11 +268,23 @@ export interface QuestState {
   activeCityId: string | null;
 }
 
+/** 军机点卯成功（非 clearDay）时返回，供邸报 `revert` 与 UI 使用 */
+export type ToggleQuestCompletionMeta = {
+  expGain: number;
+  staminaRestored: number;
+  tokensMinted: number;
+  postDopaminePool: number;
+  dopamineExpFed: number;
+};
+
 export interface QuestActions {
   addQuest: (quest: Quest) => void;
   removeQuest: (id: string) => void;
   updateQuest: (id: string, data: QuestPatch) => void;
-  toggleQuest: (questId: string, opts?: { clearDay?: boolean }) => boolean;
+  toggleQuest: (
+    questId: string,
+    opts?: { clearDay?: boolean }
+  ) => boolean | ToggleQuestCompletionMeta;
   resetDailyQuests: () => void;
   /**
    * 保证「祖宗之法」MVA 任务集存在：
@@ -376,17 +393,56 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         emperor.consumeStamina(quest.staminaCost);
         const mvaBonus =
           emperor.isNomadMode && quest.id.startsWith("quest-mva-");
-        const expGain = mvaBonus
+        const baseMerit = mvaBonus
           ? Math.round(quest.expReward * 1.2)
           : quest.expReward;
-        emperor.addExp(expGain);
-        emperor.addTokens(1);
-        return true;
+
+        const cityForBuff = useMapStore
+          .getState()
+          .cities.find((c) => c.id === activeCityId);
+        const agriLv = Math.max(
+          0,
+          Math.min(10, Math.floor(cityForBuff?.agriLevel ?? 0))
+        );
+        const meritWithAgri = Math.max(
+          0,
+          Math.round(baseMerit * (1 + agriLv * 0.05))
+        );
+
+        emperor.addExp(meritWithAgri);
+        const dop = emperor.feedDopamineFromQuestReward(meritWithAgri);
+
+        const sector = classifyIndustrialSectorFromQuestTitle(quest.title);
+        if (sector) {
+          const ups = map.applyIndustrialQuestProgress(
+            activeCityId,
+            sector,
+            baseMerit
+          );
+          const display =
+            cityForBuff?.alias?.trim() || cityForBuff?.name || "本城";
+          for (const u of ups) {
+            useEventStore.getState().addLog(
+              `【${u.ministry}】圣上勤政，【${display}】${u.industryLabel}等级提升至 ${u.newLevel} 级。`,
+              "decree"
+            );
+          }
+        }
+
+        return {
+          expGain: meritWithAgri,
+          staminaRestored: quest.staminaCost,
+          tokensMinted: dop.tokensMinted,
+          postDopaminePool: dop.postDopaminePool,
+          dopamineExpFed: dop.dopamineExpFed,
+        };
       },
       resetDailyQuests: () => {
         const today = todayKey();
         const { lastLoginDate } = get();
         if (lastLoginDate === today) return;
+        const citiesBefore = useMapStore.getState().cities;
+        const tribute = totalVassalDailyTribute(citiesBefore);
         useMapStore.setState((s) => ({
           cities: s.cities.map((c) => ({
             ...c,
@@ -399,6 +455,14 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           quests: get().quests.map((q) => ({ ...q, completed: false })),
           lastLoginDate: today,
         });
+        if (tribute > 0) {
+          useEmperorStore.getState().injectGold(tribute, { silent: true });
+          useEventStore.getState().addLog(
+            `【户部】万国来朝，藩属进献岁币共计 ${tribute.toLocaleString("zh-CN")} 两，已入国库。`,
+            "treasury",
+            { emphasis: "goldFlash" }
+          );
+        }
       },
       ensureMvaQuestCatalog: () => {
         set((s) => {

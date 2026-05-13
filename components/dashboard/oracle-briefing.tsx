@@ -85,7 +85,7 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
           </span>
         </h2>
         <p className="text-xs text-muted-foreground">
-          疆域度支与粮饷汇总 · 战损预警可定位高 CPA 且无单之城池
+          诸城户部度支与粮饷总额（征战目标） · 战损预警可定位高额户部度支且无粮饷单之城池
         </p>
       </div>
 
@@ -94,12 +94,12 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Landmark className="h-3.5 w-3.5 text-imperial-vermilion/80" />
-              总度支
+              户部度支
             </div>
             <p className="mt-1.5 text-xl font-semibold tabular-nums text-imperial-vermilion sm:text-2xl">
               {totalSpend.toLocaleString("zh-CN")}
             </p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">CPA 合计</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">度支总额</p>
           </CardContent>
         </Card>
 
@@ -107,12 +107,12 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Scale className="h-3.5 w-3.5 text-imperial-gold/80" />
-              总粮饷
+              粮饷总额
             </div>
             <p className="mt-1.5 text-xl font-semibold tabular-nums text-imperial-gold sm:text-2xl">
               {totalOrders.toLocaleString("zh-CN")}
             </p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">Orders 合计</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">单量合计</p>
           </CardContent>
         </Card>
 
@@ -138,7 +138,7 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
                   })}
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">
-              总度支 / 总粮饷
+              户部度支 / 粮饷总额
               {avgCpa !== null && avgCpa > EFFICIENCY_WARN_THRESHOLD
                 ? " · 超阈警示"
                 : ""}
@@ -160,7 +160,7 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
                   size="icon"
                   className="h-8 w-8 shrink-0 text-imperial-vermilion hover:bg-imperial-vermilion/15"
                   onClick={onRiskClick}
-                  title={`战损预警：${risks.length} 座城池 CPA>${CPA_RISK_THRESHOLD} 且无单，点击定位`}
+                  title={`战损预警：${risks.length} 座城池度支>${CPA_RISK_THRESHOLD} 且无粮饷单，点击定位`}
                   aria-label="战损预警，定位城池"
                 >
                   <Siren className="h-4 w-4 animate-pulse drop-shadow-[0_0_6px_rgba(225,29,72,0.65)]" />

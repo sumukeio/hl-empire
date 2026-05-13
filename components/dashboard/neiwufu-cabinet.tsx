@@ -5,6 +5,7 @@ import { Building2, Moon, Swords, Ticket, Timer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -12,7 +13,7 @@ import {
   CURFEW_HEALTH_THRESHOLD,
   isCurfewMode,
 } from "@/lib/imperial-vitals";
-import { useEmperorStore, useEventStore } from "@/store";
+import { useEmperorStore, useEventStore, DOPAMINE_ENERGY_PER_TICKET } from "@/store";
 
 const ENTERTAINMENT_MS = 20 * 60 * 1000;
 
@@ -34,6 +35,7 @@ export function NeiwufuCabinet({
   const health = useEmperorStore((s) => s.health);
   const martialArts = useEmperorStore((s) => s.martialArts);
   const tokens = useEmperorStore((s) => s.tokens);
+  const dopaminePool = useEmperorStore((s) => s.dopaminePool);
   const stamina = useEmperorStore((s) => s.stamina);
   const isDressed = useEmperorStore((s) => s.isDressed);
   const isEntertaining = useEmperorStore((s) => s.isEntertaining);
@@ -52,6 +54,23 @@ export function NeiwufuCabinet({
   const [now, setNow] = useState(() => Date.now());
   const [showDisrobe, setShowDisrobe] = useState(false);
   const endOnceRef = useRef(false);
+  const prevTokensRef = useRef(tokens);
+  const [tokenBump, setTokenBump] = useState(false);
+
+  useEffect(() => {
+    if (tokens > prevTokensRef.current) {
+      setTokenBump(true);
+      const t = window.setTimeout(() => setTokenBump(false), 480);
+      prevTokensRef.current = tokens;
+      return () => window.clearTimeout(t);
+    }
+    prevTokensRef.current = tokens;
+  }, [tokens]);
+
+  const dopamineProgressPct =
+    (Math.max(0, Math.min(14, Math.floor(dopaminePool))) /
+      DOPAMINE_ENERGY_PER_TICKET) *
+    100;
 
   const curfew = isCurfewMode(health);
   const canAct = !curfew && isDressed && !isEntertaining;
@@ -265,7 +284,7 @@ export function NeiwufuCabinet({
                         addLog(
                           v
                             ? "朝服协议：圣上临宣政殿，可理政。"
-                            : "朝服协议：圣上入养心殿（睡衣），沙盘封禁。",
+                            : "朝服协议：圣上入养心殿（睡衣），九州图志封禁。",
                           "decree"
                         );
                       }}
@@ -329,10 +348,34 @@ export function NeiwufuCabinet({
                       </p>
                       <p className="mt-1 flex items-center justify-center gap-2 text-3xl font-bold tabular-nums text-imperial-gold sm:text-4xl">
                         <Ticket className="h-7 w-7 shrink-0 opacity-90 sm:h-8 sm:w-8" />
-                        {tokens}
+                        <span
+                          className={cn(
+                            "inline-block origin-center will-change-transform",
+                            tokenBump && "animate-imperial-token-pop"
+                          )}
+                        >
+                          {tokens}
+                        </span>
                       </p>
-                      <p className="mt-1 text-[10px] text-muted-foreground">
-                        完成军机任务自动 +1 · 1 券 = 20 分钟
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                          <span className="font-medium text-imperial-gold/85">
+                            多巴胺蓄池
+                          </span>
+                          <span className="tabular-nums text-imperial-gold/90">
+                            {Math.max(0, Math.min(14, Math.floor(dopaminePool)))} /{" "}
+                            {DOPAMINE_ENERGY_PER_TICKET}
+                          </span>
+                        </div>
+                        <Progress
+                          value={dopamineProgressPct}
+                          className="h-1.5 bg-slate-900/90"
+                          indicatorClassName="bg-gradient-to-r from-amber-900/90 via-imperial-gold to-amber-300/95 shadow-[0_0_12px_rgba(245,158,11,0.35)] transition-all duration-500 ease-out"
+                        />
+                      </div>
+                      <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+                        军机功勋注入蓄池，每满 {DOPAMINE_ENERGY_PER_TICKET}{" "}
+                        点由内务府铸 1 券 · 1 券 = 20 分钟
                       </p>
                     </div>
 

@@ -8,7 +8,7 @@ export type ImperialAxis =
   | "delivery";
 
 const AXIS_LABEL: Record<ImperialAxis, string> = {
-  territory: "疆域勘探",
+  territory: "征战勘探",
   traffic: "招兵买马",
   diplomacy: "外交风云",
   delivery: "宣教抚民",

@@ -118,20 +118,22 @@ export function InnerCourtCard({
   const canVisitArchives = privateVault >= 500;
   const canIndulgeTour = privateVault >= 1000;
 
-  const onExpense = (type: "infrastructure" | "decadence") => {
+  const onExpenseInfrastructure = () => {
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       showToast({ tone: "err", text: "请输入有效银两数目。" });
       return;
     }
-    const cost = type === "decadence" ? parsedAmount * 2 : parsedAmount;
-    if (gold < cost) {
+    if (gold < parsedAmount) {
       showToast({ tone: "err", text: "国库银两不足，无法划账。" });
       return;
     }
-    const ok = recordExpense(parsedAmount, type);
+    const ok = recordExpense({
+      amount: parsedAmount,
+      category: "infrastructure",
+    });
     if (ok) {
       setAmountRaw("");
-      showToast({ tone: "ok", text: "度支已入账，邸报已发。" });
+      showToast({ tone: "ok", text: "户部支用已入账，邸报已发。" });
     }
   };
 
@@ -275,35 +277,23 @@ export function InnerCourtCard({
                 type="button"
                 size="sm"
                 className="h-auto justify-start gap-2 bg-primary py-2 text-left text-[11px] text-primary-foreground hover:bg-primary/90"
-                onClick={() => onExpense("infrastructure")}
+                onClick={onExpenseInfrastructure}
               >
                 <span aria-hidden className="text-base">
                   🏗️
                 </span>
                 <span>
-                  <span className="block font-medium">工部拨款 · 实用基建</span>
+                  <span className="block font-medium">其它基建 · 户部支用</span>
                   <span className="text-[10px] font-normal opacity-90">
-                    耐用品 / 房租 / 生产力 · 国库 −amount
+                    国库按实额 1:1 扣减 · 御膳/常服/利器/问道请见顶栏户部司帑 → 个人支用
                   </span>
                 </span>
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-auto justify-start gap-2 border-imperial-vermilion/60 bg-imperial-vermilion/5 py-2 text-left text-[11px] text-imperial-vermilion hover:bg-imperial-vermilion/10"
-                onClick={() => onExpense("decadence")}
-              >
-                <span aria-hidden className="text-base">
-                  🎭
-                </span>
-                <span>
-                  <span className="block font-medium">骄奢淫逸 · 修建行宫</span>
-                  <span className="text-[10px] font-normal text-imperial-vermilion/85">
-                    双倍抄没 · 民心 −10
-                  </span>
-                </span>
-              </Button>
+              <p className="rounded border border-slate-800/80 bg-slate-950/50 px-2 py-1.5 text-[10px] leading-snug text-slate-500">
+                资产配置与高性价比支用已统一至顶栏{" "}
+                <span className="font-medium text-imperial-gold/90">户部司帑</span>{" "}
+                Tab「个人支用」。
+              </p>
               <Button
                 type="button"
                 size="sm"

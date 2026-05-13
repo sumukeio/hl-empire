@@ -296,7 +296,7 @@ export function SettingsView() {
               造办处
             </h1>
             <p className="text-xs text-slate-500">
-              疆域司 · 枢密院 · 帝国档案 — 配置实时写入御案（localStorage）
+              图志司 · 枢密院 · 帝国档案 — 配置实时写入御案（localStorage）
             </p>
           </div>
         </div>
@@ -309,7 +309,7 @@ export function SettingsView() {
               value="territory"
               className="data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
             >
-              疆域司
+              图志司
             </TabsTrigger>
             <TabsTrigger
               value="council"
@@ -330,10 +330,10 @@ export function SettingsView() {
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-primary">
-                    疆域管理
+                    征战目标管理
                   </h2>
                   <p className="text-xs text-slate-500">
-                    城池名与产品别名；沙盘卡片将显示别名
+                    城池名与产品别名；九州图志卡片将显示别名
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -387,7 +387,7 @@ export function SettingsView() {
                 <div className="space-y-0 p-2">
                   {cities.length === 0 ? (
                     <p className="py-12 text-center text-sm text-slate-500">
-                      暂无城池。点击「新增城池」以扩建疆域。
+                      暂无城池。点击「新增城池」以扩充征战目标。
                     </p>
                   ) : (
                     <>
@@ -613,7 +613,7 @@ export function SettingsView() {
           </AlertDialogTitle>
           <AlertDialogDescription className="text-slate-400">
             确定要将这 {selectedCityIds.length}{" "}
-            座城池从帝国版图中彻底抹除吗？相关度支与军机备忘将永久销毁。
+            座城池从九州图志征战目标中彻底抹除吗？相关度支与军机备忘将永久销毁。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -785,9 +785,9 @@ function CityRow({
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="space-y-1.5">
-          <Label className="text-xs text-slate-500">CPA</Label>
+          <Label className="text-xs text-slate-500">度支 (CPA)</Label>
           <Input
             inputMode="numeric"
             value={String(city.cpa)}
@@ -799,7 +799,19 @@ function CityRow({
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs text-slate-500">Orders</Label>
+          <Label className="text-xs text-slate-500">线索 (粉)</Label>
+          <Input
+            inputMode="numeric"
+            value={String(city.leads ?? 0)}
+            onChange={(e) => {
+              const v = Math.max(0, Number.parseInt(e.target.value, 10) || 0);
+              updateCity(city.id, { leads: v });
+            }}
+            className={cn("h-9", field)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-slate-500">粮饷 (单)</Label>
           <Input
             inputMode="numeric"
             value={String(city.orders)}

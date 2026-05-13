@@ -58,7 +58,7 @@ export function EmpireArchivePanel() {
       const { logs } = parsed.data.events;
       setStagedRaw(text);
       setStagedSummary(
-        `密函时间：${parsed.data.exportedAt}\n疆域 ${cities.length} 座 · 军机 ${quests.length} 务 · 邸报 ${logs.length} 条`
+        `密函时间：${parsed.data.exportedAt}\n征战目标 ${cities.length} 座 · 军机 ${quests.length} 务 · 邸报 ${logs.length} 条`
       );
       setConfirmOpen(true);
     };
@@ -87,7 +87,7 @@ export function EmpireArchivePanel() {
       <div className="mb-4">
         <h2 className="text-base font-semibold text-primary">帝国档案</h2>
         <p className="text-xs text-slate-500">
-          导出 / 导入完整本地存档（皇帝、疆域、军机、邸报）。导入将覆盖当前浏览器中的帝国数据。
+          导出 / 导入完整本地存档（皇帝、征战目标、军机、邸报）。导入将覆盖当前浏览器中的帝国数据。
         </p>
       </div>
 
@@ -157,7 +157,7 @@ export function EmpireArchivePanel() {
                 <p>
                   将用密函内容
                   <strong className="text-imperial-vermilion">覆盖</strong>
-                  当前皇帝属性、疆域、军机与邸报。此操作不可撤销（可先导出备份）。
+                  当前皇帝属性、征战目标、军机与邸报。此操作不可撤销（可先导出备份）。
                 </p>
                 <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded border border-slate-800 bg-slate-900/80 p-2 font-mono text-[10px] text-slate-300">
                   {stagedSummary}

@@ -1,5 +1,5 @@
 export { rehydrateAllStores } from "./rehydrate";
-export { useEmperorStore } from "./emperor-store";
+export { useEmperorStore, DOPAMINE_ENERGY_PER_TICKET } from "./emperor-store";
 export {
   useMapStore,
   createDefaultCities,
@@ -7,14 +7,14 @@ export {
   getQuestDailyCount,
   isQuestFullyCompletedToday,
 } from "./map-store";
-export type { BulkAddCitiesResult } from "./map-store";
+export type { BulkAddCitiesResult, TourCityResult } from "./map-store";
 export {
   useQuestStore,
   createDefaultQuests,
   createEmptyQuest,
   hydrateQuestSortOrderFromPersistOrder,
 } from "./quest-store";
-export type { BulkAddQuestsResult } from "./quest-store";
+export type { BulkAddQuestsResult, ToggleQuestCompletionMeta } from "./quest-store";
 export { useEventStore } from "./event-store";
 export {
   usePrefsStore,
@@ -24,11 +24,17 @@ export {
 export type { PrefsState } from "./prefs-store";
 export type {
   City,
+  CityDailyReportData,
   CityPatch,
   CityStatus,
+  DailyBattleReportInput,
+  PersonalExpenseCategory,
   Quest,
   QuestPatch,
   QuestPeriod,
+  RecordExpenseInput,
   EventLog,
   EventLogType,
+  SubmitCityReportResult,
+  SubmitDailyReportResult,
 } from "./types";

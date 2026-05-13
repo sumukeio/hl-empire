@@ -1,7 +1,21 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import type { City, CityPatch, CityStatus, Quest } from "./types";
+import type {
+  City,
+  CityDailyReportData,
+  CityPatch,
+  CityStatus,
+  Quest,
+  SubmitCityReportResult,
+} from "./types";
+import { useEmperorStore } from "./emperor-store";
+import { useEventStore } from "./event-store";
+import {
+  applyIndustrialSectorExp,
+  type IndustrialLevelUpEvent,
+  type IndustrialSector,
+} from "@/lib/city-industry";
 
 const DEFAULT_CITY_NAMES = [
   "长安",
@@ -47,7 +61,7 @@ export function isQuestFullyCompletedToday(
   return getQuestDailyCount(city, quest.id) >= max;
 }
 
-/** 首次安装或无可读存档时的默认疆域（可随后在造办处增删改）。 */
+/** 首次安装或无可读存档时的默认征战目标列表（可随后在造办处增删改）。 */
 export function createDefaultCities(): City[] {
   return DEFAULT_CITY_NAMES.map((name, index) => ({
     id: `city-${index + 1}`,
@@ -56,9 +70,16 @@ export function createDefaultCities(): City[] {
     status: 0 as CityStatus,
     memo: "",
     cpa: 0,
+    leads: 0,
     orders: 0,
     troops: 0,
     equipments: 0,
+    agriLevel: 0,
+    commLevel: 0,
+    secuLevel: 0,
+    agriExp: 0,
+    commExp: 0,
+    secuExp: 0,
     completedQuestIds: [],
     questCompletedAt: {},
     questDailyCompletions: {},
@@ -80,9 +101,37 @@ export function createEmptyCity(partial?: Partial<Omit<City, "id">>): City {
     status: partial?.status ?? 0,
     memo: partial?.memo ?? "",
     cpa: partial?.cpa ?? 0,
+    leads:
+      typeof partial?.leads === "number" && Number.isFinite(partial.leads)
+        ? Math.max(0, Math.floor(partial.leads))
+        : 0,
     orders: partial?.orders ?? 0,
     troops: partial?.troops ?? 0,
     equipments: partial?.equipments ?? 0,
+    agriLevel:
+      typeof partial?.agriLevel === "number" && Number.isFinite(partial.agriLevel)
+        ? Math.max(0, Math.min(10, Math.floor(partial.agriLevel)))
+        : 0,
+    commLevel:
+      typeof partial?.commLevel === "number" && Number.isFinite(partial.commLevel)
+        ? Math.max(0, Math.min(10, Math.floor(partial.commLevel)))
+        : 0,
+    secuLevel:
+      typeof partial?.secuLevel === "number" && Number.isFinite(partial.secuLevel)
+        ? Math.max(0, Math.min(10, Math.floor(partial.secuLevel)))
+        : 0,
+    agriExp:
+      typeof partial?.agriExp === "number" && Number.isFinite(partial.agriExp)
+        ? Math.max(0, Math.floor(partial.agriExp))
+        : 0,
+    commExp:
+      typeof partial?.commExp === "number" && Number.isFinite(partial.commExp)
+        ? Math.max(0, Math.floor(partial.commExp))
+        : 0,
+    secuExp:
+      typeof partial?.secuExp === "number" && Number.isFinite(partial.secuExp)
+        ? Math.max(0, Math.floor(partial.secuExp))
+        : 0,
     completedQuestIds: partial?.completedQuestIds ?? [],
     questCompletedAt: partial?.questCompletedAt ?? {},
     questDailyCompletions: partial?.questDailyCompletions ?? {},
@@ -130,6 +179,10 @@ export function migrateCity(raw: unknown): City {
     status: st,
     memo: typeof r.memo === "string" ? r.memo : "",
     cpa: typeof r.cpa === "number" && Number.isFinite(r.cpa) ? r.cpa : 0,
+    leads:
+      typeof r.leads === "number" && Number.isFinite(r.leads)
+        ? Math.max(0, Math.floor(r.leads))
+        : 0,
     orders:
       typeof r.orders === "number" && Number.isFinite(r.orders) ? r.orders : 0,
     troops:
@@ -139,6 +192,30 @@ export function migrateCity(raw: unknown): City {
     equipments:
       typeof r.equipments === "number" && Number.isFinite(r.equipments)
         ? Math.max(0, r.equipments)
+        : 0,
+    agriLevel:
+      typeof r.agriLevel === "number" && Number.isFinite(r.agriLevel)
+        ? Math.max(0, Math.min(10, Math.floor(r.agriLevel)))
+        : 0,
+    commLevel:
+      typeof r.commLevel === "number" && Number.isFinite(r.commLevel)
+        ? Math.max(0, Math.min(10, Math.floor(r.commLevel)))
+        : 0,
+    secuLevel:
+      typeof r.secuLevel === "number" && Number.isFinite(r.secuLevel)
+        ? Math.max(0, Math.min(10, Math.floor(r.secuLevel)))
+        : 0,
+    agriExp:
+      typeof r.agriExp === "number" && Number.isFinite(r.agriExp)
+        ? Math.max(0, Math.floor(r.agriExp))
+        : 0,
+    commExp:
+      typeof r.commExp === "number" && Number.isFinite(r.commExp)
+        ? Math.max(0, Math.floor(r.commExp))
+        : 0,
+    secuExp:
+      typeof r.secuExp === "number" && Number.isFinite(r.secuExp)
+        ? Math.max(0, Math.floor(r.secuExp))
         : 0,
     completedQuestIds,
     questCompletedAt,
@@ -156,6 +233,10 @@ export type BulkAddCitiesResult = {
   addedCount: number;
   skippedCount: number;
 };
+
+export type TourCityResult =
+  | { ok: true }
+  | { ok: false; reason: string };
 
 export interface MapState {
   cities: City[];
@@ -183,6 +264,19 @@ export interface MapActions {
   clearQuestCompletionsForDay: (cityId: string, questId: string) => void;
   /** 撤回一次勘合（次数 −1）；返回是否曾大于 0 */
   decrementQuestCompletion: (cityId: string, questId: string) => boolean;
+  /** 本城产业经验 +delta，可能升级；返回升级事件供邸报 */
+  applyIndustrialQuestProgress: (
+    cityId: string,
+    sector: IndustrialSector,
+    meritDelta: number
+  ) => IndustrialLevelUpEvent[];
+  /** 圣驾巡幸金色藩属城：耗体力与银两，奖功勋、铸券与民心 */
+  tourCity: (cityId: string) => TourCityResult;
+  /** 日结战报：从军费扣本日消耗，累加 cpa / leads / orders；本日出单则升为金色藩属 */
+  submitCityReport: (
+    cityId: string,
+    dailyData: CityDailyReportData
+  ) => SubmitCityReportResult;
 }
 
 export const useMapStore = create<MapState & MapActions>()(
@@ -205,14 +299,36 @@ export const useMapStore = create<MapState & MapActions>()(
         set((s) => ({
           cities: s.cities.filter((c) => c.id !== id),
         })),
-      updateCity: (id, data) =>
+      updateCity: (id, data) => {
+        const prev = get().cities.find((c) => c.id === id);
+        let cpaIncrease = 0;
+        let payCityDisplay: string | null = null;
+        if (prev) {
+          const patch = data as CityPatch;
+          const nextCpa =
+            typeof patch.cpa === "number" && Number.isFinite(patch.cpa)
+              ? Math.max(0, Math.floor(patch.cpa))
+              : Math.max(0, Math.floor(Number.isFinite(prev.cpa) ? prev.cpa : 0));
+          const prevCpa = Math.max(
+            0,
+            Math.floor(Number.isFinite(prev.cpa) ? prev.cpa : 0)
+          );
+          cpaIncrease = Math.max(0, nextCpa - prevCpa);
+          payCityDisplay = (prev.alias?.trim() || prev.name).trim() || "本城";
+        }
         set((s) => ({
           cities: s.cities.map((c) => {
             if (c.id !== id) return c;
             const { id: _drop, ...rest } = data as CityPatch & { id?: string };
             return { ...c, ...rest, id: c.id };
           }),
-        })),
+        }));
+        if (cpaIncrease > 0 && payCityDisplay) {
+          useEmperorStore
+            .getState()
+            .spendTreasuryForCityCpaIncrease(payCityDisplay, cpaIncrease);
+        }
+      },
       bulkRemoveCities: (ids) => {
         const idSet = new Set(ids.filter((x) => typeof x === "string" && x.length > 0));
         if (idSet.size === 0) return;
@@ -345,6 +461,116 @@ export const useMapStore = create<MapState & MapActions>()(
           }),
         }));
         return mutated;
+      },
+      applyIndustrialQuestProgress: (cityId, sector, meritDelta) => {
+        const levelUps: IndustrialLevelUpEvent[] = [];
+        set((s) => ({
+          cities: s.cities.map((c) => {
+            if (c.id !== cityId) return c;
+            const { nextCity, levelUps: ups } = applyIndustrialSectorExp(
+              c,
+              sector,
+              meritDelta
+            );
+            levelUps.push(...ups);
+            return nextCity;
+          }),
+        }));
+        return levelUps;
+      },
+      tourCity: (cityId) => {
+        const city = get().cities.find((c) => c.id === cityId);
+        if (!city) return { ok: false, reason: "未找到该城池。" };
+        if (city.status !== 3) {
+          return { ok: false, reason: "非藩属城池，不得巡幸。" };
+        }
+        const emperor = useEmperorStore.getState();
+        if (emperor.health < 50) {
+          return { ok: false, reason: "龙体欠安，不宜远行" };
+        }
+        if (emperor.stamina < 25) {
+          return { ok: false, reason: "体力不足，请稍息再议卤簿。" };
+        }
+        if (emperor.gold < 100) {
+          return { ok: false, reason: "国库空虚，难备巡幸仪仗。" };
+        }
+        emperor.consumeStamina(25);
+        emperor.updateGold((g) => g - 100);
+        emperor.addExp(100);
+        emperor.feedDopamineFromQuestReward(15);
+        useEmperorStore.setState((s) => ({
+          morale: Math.min(100, Math.max(0, s.morale + 2)),
+        }));
+        const display = city.alias?.trim() || city.name;
+        useEventStore.getState().addLog(
+          `【礼部】圣上起驾巡幸【${display}】，万民称颂，国运昌隆。`,
+          "decree"
+        );
+        return { ok: true };
+      },
+      submitCityReport: (cityId, dailyData) => {
+        const spend = Math.max(
+          0,
+          Math.floor(
+            Number.isFinite(dailyData.dailySpend) ? dailyData.dailySpend : 0
+          )
+        );
+        const dLeads = Math.max(
+          0,
+          Math.floor(
+            Number.isFinite(dailyData.dailyLeads) ? dailyData.dailyLeads : 0
+          )
+        );
+        const dOrders = Math.max(
+          0,
+          Math.floor(
+            Number.isFinite(dailyData.dailyOrders) ? dailyData.dailyOrders : 0
+          )
+        );
+        const prev = get().cities.find((c) => c.id === cityId);
+        if (!prev) {
+          return { ok: false, reason: "未找到该城池。" };
+        }
+        const mil = Math.max(
+          0,
+          Math.floor(useEmperorStore.getState().militaryFunds ?? 0)
+        );
+        if (mil < spend) {
+          return {
+            ok: false,
+            reason: "军费不足，请先从国库拨款！",
+          };
+        }
+        useEmperorStore.setState((s) => ({
+          militaryFunds: Math.max(
+            0,
+            Math.floor(s.militaryFunds ?? 0) - spend
+          ),
+        }));
+        const display = (prev.alias?.trim() || prev.name).trim() || "本城";
+        set((s) => ({
+          cities: s.cities.map((c) => {
+            if (c.id !== cityId) return c;
+            const nextCpa = Math.max(0, Math.floor(c.cpa)) + spend;
+            const nextLeads = Math.max(0, Math.floor(c.leads ?? 0)) + dLeads;
+            const nextOrders = Math.max(0, Math.floor(c.orders)) + dOrders;
+            const nextStatus: CityStatus =
+              dOrders > 0 ? 3 : c.status;
+            return {
+              ...c,
+              cpa: nextCpa,
+              leads: nextLeads,
+              orders: nextOrders,
+              status: nextStatus,
+            };
+          }),
+        }));
+        useEventStore.getState().addLog(
+          `【兵部】${display} 奏报：今日度支 ${spend.toLocaleString("zh-CN")} 两，投诚 ${dLeads.toLocaleString("zh-CN")} 人，收缴粮饷 ${dOrders.toLocaleString("zh-CN")} 单。`,
+          "treasury",
+          { emphasis: "goldFlash" }
+        );
+        return { ok: true };
       },
     }),
     {
