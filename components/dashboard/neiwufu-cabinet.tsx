@@ -36,6 +36,7 @@ export function NeiwufuCabinet({
   const martialArts = useEmperorStore((s) => s.martialArts);
   const tokens = useEmperorStore((s) => s.tokens);
   const dopaminePool = useEmperorStore((s) => s.dopaminePool);
+  const dopaminePoolAnim = useEmperorStore((s) => s.dopaminePoolAnim);
   const stamina = useEmperorStore((s) => s.stamina);
   const isDressed = useEmperorStore((s) => s.isDressed);
   const isEntertaining = useEmperorStore((s) => s.isEntertaining);
@@ -66,6 +67,14 @@ export function NeiwufuCabinet({
     }
     prevTokensRef.current = tokens;
   }, [tokens]);
+
+  useEffect(() => {
+    if (dopaminePoolAnim === "none") return;
+    const t = window.setTimeout(() => {
+      useEmperorStore.setState({ dopaminePoolAnim: "none" });
+    }, 2600);
+    return () => window.clearTimeout(t);
+  }, [dopaminePoolAnim]);
 
   const dopamineProgressPct =
     (Math.max(0, Math.min(14, Math.floor(dopaminePool))) /
@@ -357,22 +366,41 @@ export function NeiwufuCabinet({
                           {tokens}
                         </span>
                       </p>
-                      <div className="mt-2 space-y-1.5">
-                        <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                          <span className="font-medium text-imperial-gold/85">
-                            多巴胺蓄池
-                          </span>
-                          <span className="tabular-nums text-imperial-gold/90">
-                            {Math.max(0, Math.min(14, Math.floor(dopaminePool)))} /{" "}
-                            {DOPAMINE_ENERGY_PER_TICKET}
-                          </span>
+                        <div className="mt-2 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                            <span className="font-medium text-imperial-gold/85">
+                              多巴胺蓄池
+                            </span>
+                            <span className="tabular-nums text-imperial-gold/90">
+                              {Math.max(0, Math.min(14, Math.floor(dopaminePool)))} /{" "}
+                              {DOPAMINE_ENERGY_PER_TICKET}
+                            </span>
+                          </div>
+                          <div
+                            className={cn(
+                              "rounded-full",
+                              dopaminePoolAnim === "drain" &&
+                                "ring-2 ring-imperial-vermilion/80 animate-imperial-dopamine-bleed"
+                            )}
+                          >
+                            <Progress
+                              value={dopamineProgressPct}
+                              className={cn(
+                                "h-1.5 bg-slate-900/90",
+                                dopaminePoolAnim === "gain" &&
+                                  "ring-1 ring-imperial-gold/50 shadow-[0_0_14px_rgba(245,158,11,0.25)]"
+                              )}
+                              indicatorClassName={cn(
+                                "transition-all duration-500 ease-out",
+                                dopaminePoolAnim === "drain"
+                                  ? "bg-gradient-to-r from-imperial-vermilion via-red-600 to-imperial-vermilion shadow-[0_0_12px_rgba(225,29,72,0.45)]"
+                                  : "bg-gradient-to-r from-amber-900/90 via-imperial-gold to-amber-300/95 shadow-[0_0_12px_rgba(245,158,11,0.35)]",
+                                dopaminePoolAnim === "gain" &&
+                                  "animate-imperial-dopamine-shimmer bg-[length:220%_100%]"
+                              )}
+                            />
+                          </div>
                         </div>
-                        <Progress
-                          value={dopamineProgressPct}
-                          className="h-1.5 bg-slate-900/90"
-                          indicatorClassName="bg-gradient-to-r from-amber-900/90 via-imperial-gold to-amber-300/95 shadow-[0_0_12px_rgba(245,158,11,0.35)] transition-all duration-500 ease-out"
-                        />
-                      </div>
                       <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
                         军机功勋注入蓄池，每满 {DOPAMINE_ENERGY_PER_TICKET}{" "}
                         点由内务府铸 1 券 · 1 券 = 20 分钟

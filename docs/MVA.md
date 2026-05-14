@@ -1,4 +1,4 @@
-> **与「瀚翎帝国」仪表盘**：军机处默认任务（十四务 · 祖宗之法）见仓库 `store/quest-store.ts` 中 `createDefaultQuests()`；持久化与换日、旧档迁移见 `ensureMvaQuestCatalog`。产品设计说明见 `docs/瀚翎帝国-设计与机制说明.md`（§3.4、§4）。
+> **与「瀚翎帝国」仪表盘**：军机处默认任务（**三十一务** · 政务清单）见 `store/default-mva-quests.ts` / `createDefaultQuests()`；持久化与换日、旧档迁移见 `ensureMvaQuestCatalog` 与 `migrateQuest`。产品设计说明见 `docs/瀚翎帝国-设计与机制说明.md`（§3.4、§4）。
 
 - 产品
 

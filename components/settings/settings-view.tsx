@@ -45,6 +45,8 @@ import type {
   CityPatch,
   EventLogType,
   Quest,
+  QuestCompensationType,
+  QuestOccurrence,
   QuestPatch,
   QuestPeriod,
 } from "@/store/types";
@@ -483,11 +485,22 @@ export function SettingsView() {
                   htmlFor="bulk-quests"
                   className="text-xs text-imperial-gold/90"
                 >
-                  批量导入（每行一条）优先{" "}
-                  <strong className="text-imperial-gold">Tab</strong> 四列；手打推荐{" "}
-                  <strong className="text-imperial-gold">标题|时段|功勋|体力</strong>
-                  ；亦可用逗号且标题可含逗号（末三格为时段、功勋、体力）。输入框内按 Tab
-                  会插入制表符。
+                  批量导入（每行一条）：列顺序为{" "}
+                  <strong className="text-imperial-gold">
+                    标题 · 时段 · 功勋 · 体力
+                  </strong>
+                  ，其后可依次追加{" "}
+                  <strong className="text-imperial-gold">
+                    最短耗时(分钟) · 补救 · 时效
+                  </strong>
+                  （须连续，不可跳列）。分隔优先{" "}
+                  <strong className="text-imperial-gold">Tab</strong>，亦可{" "}
+                  <strong className="text-imperial-gold">|</strong>；逗号分列时标题可含逗号（固定尾列自末向前识别）。补救：
+                  <span className="text-slate-400">不可弥补</span>/
+                  <span className="text-slate-400">可补办</span>；时效：
+                  <span className="text-slate-400">一次性</span>/
+                  <span className="text-slate-400">每日一次</span>/
+                  <span className="text-slate-400">每日多次</span>。输入框内按 Tab 会插入制表符。
                 </Label>
                 <Textarea
                   id="bulk-quests"
@@ -505,7 +518,7 @@ export function SettingsView() {
                       ta.selectionStart = ta.selectionEnd = start + 1;
                     });
                   }}
-                  placeholder="户部核算|晌午|10|5  或  标题列\t晌午\t10\t5"
+                  placeholder="【户部】查阅国库|早朝|10|5|2|可补办|每日一次"
                   rows={4}
                   className={cn(
                     "min-h-[6rem] resize-y border-slate-800 bg-slate-950/80 text-sm text-slate-100 placeholder:text-slate-600",
@@ -562,18 +575,27 @@ export function SettingsView() {
                 </Button>
               </div>
 
-              <div className="hidden border-b border-slate-800/90 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid sm:grid-cols-[auto_auto_minmax(0,1fr)_6.5rem_4.5rem_4.5rem_auto] sm:gap-2 sm:px-2">
+              <div className="hidden border-b border-slate-800/90 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid sm:grid-cols-[auto_auto_minmax(0,1fr)_6.5rem_3.25rem_4.5rem_4.5rem_auto] sm:gap-2 sm:px-2">
                 <span className="w-5 text-center" title="同辰内拖动排序">
                   序
                 </span>
                 <span className="w-4" aria-hidden />
                 <span>任务标题</span>
                 <span>时辰</span>
+                <span className="text-center">日限</span>
                 <span>功勋</span>
                 <span>体力</span>
                 <span className="text-center">操作</span>
               </div>
+              <p className="mb-1 hidden text-[10px] leading-snug text-slate-500 sm:block sm:px-2">
+                每条政务下方可配置：<strong className="text-slate-400">最短耗时</strong>（分钟）、
+                <strong className="text-slate-400">补救</strong>（不可弥补 / 可补办）、
+                <strong className="text-slate-400">时效</strong>（一次性 / 每日一次 / 每日多次；修改后会按规则重算日限）。
+              </p>
 
+              <p className="mb-2 text-[10px] leading-snug text-slate-500 sm:hidden">
+                每条政务下方可配置最短耗时、补救与时效。
+              </p>
               <ScrollArea className="h-[min(60vh,480px)] rounded-lg border border-slate-800/90 pr-2">
                 <div className="min-w-0 p-1">
                   {quests.length === 0 ? (
@@ -896,6 +918,46 @@ function CompactQuestRow({
   const expSnap = useRef(quest.expReward);
   const stSnap = useRef(quest.staminaCost);
   const maxDaySnap = useRef(quest.maxCompletionsPerDay ?? 1);
+  const minSnap = useRef(quest.minCompletionTime ?? 10);
+
+  const onMinTimeFocus = () => {
+    minSnap.current = quest.minCompletionTime ?? 10;
+  };
+  const onMinTimeBlur = () => {
+    const latest = useQuestStore
+      .getState()
+      .quests.find((q) => q.id === quest.id);
+    if (!latest) return;
+    const cur = latest.minCompletionTime ?? 10;
+    if (cur !== minSnap.current) {
+      addLog(
+        `枢密院：已调整《${latest.title}》最短耗时（${cur} 分钟）`,
+        "decree"
+      );
+    }
+    minSnap.current = cur;
+  };
+
+  const onCompensationChange = (v: QuestCompensationType) => {
+    if (v === quest.compensationType) return;
+    updateQuest(quest.id, { compensationType: v });
+    const label = v === "absolute" ? "不可弥补" : "可补办";
+    addLog(`枢密院：已调整《${quest.title}》补救为「${label}」`, "decree");
+  };
+
+  const onOccurrenceChange = (v: QuestOccurrence) => {
+    if (v === quest.occurrence) return;
+    updateQuest(quest.id, { occurrence: v });
+    const labels: Record<QuestOccurrence, string> = {
+      one_time: "一次性",
+      daily_once: "每日一次",
+      daily_multiple: "每日多次",
+    };
+    addLog(
+      `枢密院：已调整《${quest.title}》时效为「${labels[v]}」`,
+      "decree"
+    );
+  };
 
   const logNumericChange = (label: "功勋" | "体力") => {
     const latest = useQuestStore
@@ -994,15 +1056,16 @@ function CompactQuestRow({
     "h-8 border-slate-800 bg-slate-950/90 text-xs text-slate-100 shadow-sm focus-visible:border-imperial-gold/45 focus-visible:ring-1 focus-visible:ring-imperial-gold/25";
 
   return (
-    <div
-      className={cn(
-        "grid grid-cols-1 gap-2 border-b border-slate-800/80 py-2 last:border-0 sm:grid-cols-[auto_auto_minmax(0,1fr)_6.5rem_3.25rem_4.5rem_4.5rem_auto]",
-        "items-center px-1 sm:gap-2 sm:px-2"
-      )}
-      onDragOver={onDragOverRow}
-      onDrop={onDropRow}
-      onDragEnd={onDragEndRow}
-    >
+    <div className="border-b border-slate-800/80 py-2 last:border-0">
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-2 sm:grid-cols-[auto_auto_minmax(0,1fr)_6.5rem_3.25rem_4.5rem_4.5rem_auto]",
+          "items-center px-1 sm:gap-2 sm:px-2"
+        )}
+        onDragOver={onDragOverRow}
+        onDrop={onDropRow}
+        onDragEnd={onDragEndRow}
+      >
       <div
         className="hidden cursor-grab items-center justify-center self-center active:cursor-grabbing sm:flex"
         draggable
@@ -1109,6 +1172,64 @@ function CompactQuestRow({
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
+      </div>
+      </div>
+
+      <div className="mt-2 grid grid-cols-1 gap-2 border-l-2 border-imperial-gold/25 pl-2 sm:ml-6 sm:grid-cols-3 sm:gap-3 sm:pl-3">
+        <div className="min-w-0 space-y-1">
+          <Label className="text-[10px] text-slate-500">最短耗时（分钟）</Label>
+          <Input
+            type="number"
+            min={1}
+            max={9999}
+            title="军机处与枢密院展示用；不影响点卯结算"
+            aria-label={`${quest.title} 最短耗时分钟`}
+            value={quest.minCompletionTime ?? 10}
+            onChange={(e) => {
+              const raw = Number.parseInt(e.target.value, 10);
+              const next = Number.isFinite(raw)
+                ? Math.max(1, Math.min(9999, raw))
+                : (quest.minCompletionTime ?? 10);
+              updateQuest(quest.id, { minCompletionTime: next });
+            }}
+            onFocus={onMinTimeFocus}
+            onBlur={onMinTimeBlur}
+            className={cn("h-8 tabular-nums", cell)}
+          />
+        </div>
+        <div className="min-w-0 space-y-1">
+          <Label className="text-[10px] text-slate-500">补救</Label>
+          <Select
+            value={quest.compensationType ?? "compensable"}
+            onValueChange={(v) =>
+              onCompensationChange(v as QuestCompensationType)
+            }
+          >
+            <SelectTrigger className={cn("h-8 w-full text-xs", cell)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border-slate-800 bg-slate-950 text-slate-100">
+              <SelectItem value="absolute">不可弥补</SelectItem>
+              <SelectItem value="compensable">可补办</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0 space-y-1">
+          <Label className="text-[10px] text-slate-500">时效</Label>
+          <Select
+            value={quest.occurrence ?? "daily_once"}
+            onValueChange={(v) => onOccurrenceChange(v as QuestOccurrence)}
+          >
+            <SelectTrigger className={cn("h-8 w-full text-xs", cell)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border-slate-800 bg-slate-950 text-slate-100">
+              <SelectItem value="one_time">一次性</SelectItem>
+              <SelectItem value="daily_once">每日一次</SelectItem>
+              <SelectItem value="daily_multiple">每日多次</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     </div>
   );

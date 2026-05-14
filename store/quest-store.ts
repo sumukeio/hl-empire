@@ -11,9 +11,144 @@ import {
 import { useEmperorStore } from "./emperor-store";
 import { useEventStore } from "./event-store";
 import { useMapStore, getQuestDailyCount } from "./map-store";
-import type { Quest, QuestPatch, QuestPeriod } from "./types";
+import type {
+  Quest,
+  QuestCompensationType,
+  QuestOccurrence,
+  QuestPatch,
+  QuestPeriod,
+} from "./types";
+import {
+  buildDefaultMvaQuestsFromSeeds,
+  defaultMvaQuestIdSet,
+  maxFromOccurrence,
+} from "./default-mva-quests";
 
 const PERIODS_ALL: QuestPeriod[] = ["早朝", "晌午", "傍晚", "深夜"];
+
+/** 点卯后三十息内可撤，不扣「误点」代价 */
+export const QUEST_TIMER_CANCEL_WINDOW_MS = 30_000;
+/** 单次政务累计暂停不得超过 2 分钟；暂停不计入用时 */
+export const QUEST_TIMER_MAX_PAUSE_MS = 2 * 60 * 1000;
+
+export type ActiveQuestTimer = {
+  questId: string;
+  startTime: number;
+  /** 已结束的暂停片段累计毫秒（不含当前暂停片段） */
+  pausedMs: number;
+  /** 当前暂停开始时间；null 表示未暂停 */
+  pauseStartedAt: number | null;
+};
+
+function clampPauseCommitted(ms: number): number {
+  return Math.max(
+    0,
+    Math.min(QUEST_TIMER_MAX_PAUSE_MS, Math.floor(Number.isFinite(ms) ? ms : 0))
+  );
+}
+
+/** 不计暂停的政务有效用时（毫秒） */
+export function getQuestTimerEffectiveElapsedMs(
+  timer: ActiveQuestTimer,
+  now: number
+): number {
+  const pausedCommitted = clampPauseCommitted(timer.pausedMs);
+  let currentPause = 0;
+  if (
+    timer.pauseStartedAt != null &&
+    Number.isFinite(timer.pauseStartedAt)
+  ) {
+    const raw = Math.max(0, now - timer.pauseStartedAt);
+    const pauseCap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
+    currentPause = Math.min(raw, pauseCap);
+  }
+  return Math.max(0, now - timer.startTime - pausedCommitted - currentPause);
+}
+
+/** 当前已用暂停预算（毫秒），含进行中的暂停片段（封顶 2 分钟） */
+export function getQuestTimerPauseBudgetUsedMs(
+  timer: ActiveQuestTimer,
+  now: number
+): number {
+  const pausedCommitted = clampPauseCommitted(timer.pausedMs);
+  let currentPause = 0;
+  if (
+    timer.pauseStartedAt != null &&
+    Number.isFinite(timer.pauseStartedAt)
+  ) {
+    const raw = Math.max(0, now - timer.pauseStartedAt);
+    const pauseCap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
+    currentPause = Math.min(raw, pauseCap);
+  }
+  return Math.min(QUEST_TIMER_MAX_PAUSE_MS, pausedCommitted + currentPause);
+}
+
+function parseActiveTimer(raw: unknown): ActiveQuestTimer | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const questId = typeof o.questId === "string" ? o.questId : "";
+  const startTime =
+    typeof o.startTime === "number" && Number.isFinite(o.startTime)
+      ? o.startTime
+      : NaN;
+  if (!questId || !Number.isFinite(startTime)) return null;
+  const pausedMs = clampPauseCommitted(
+    typeof o.pausedMs === "number" && Number.isFinite(o.pausedMs)
+      ? o.pausedMs
+      : 0
+  );
+  const pauseStartedAt =
+    typeof o.pauseStartedAt === "number" && Number.isFinite(o.pauseStartedAt)
+      ? o.pauseStartedAt
+      : null;
+  return { questId, startTime, pausedMs, pauseStartedAt };
+}
+
+function computeQuestMeritForCity(
+  quest: Quest,
+  activeCityId: string
+): { meritWithAgri: number; baseMerit: number } {
+  const emperor = useEmperorStore.getState();
+  const mvaBonus = emperor.isNomadMode && quest.id.startsWith("quest-mva-");
+  const baseMerit = mvaBonus
+    ? Math.round(quest.expReward * 1.2)
+    : quest.expReward;
+  const cityForBuff = useMapStore
+    .getState()
+    .cities.find((c) => c.id === activeCityId);
+  const agriLv = Math.max(
+    0,
+    Math.min(10, Math.floor(cityForBuff?.agriLevel ?? 0))
+  );
+  const meritWithAgri = Math.max(
+    0,
+    Math.round(baseMerit * (1 + agriLv * 0.05))
+  );
+  return { meritWithAgri, baseMerit };
+}
+
+function emitIndustrialProgressForQuest(
+  quest: Quest,
+  activeCityId: string,
+  baseMerit: number
+) {
+  const sector = classifyIndustrialSectorFromQuestTitle(quest.title);
+  if (!sector) return;
+  const map = useMapStore.getState();
+  const ups = map.applyIndustrialQuestProgress(
+    activeCityId,
+    sector,
+    baseMerit
+  );
+  const cityForBuff = map.cities.find((c) => c.id === activeCityId);
+  const display = cityForBuff?.alias?.trim() || cityForBuff?.name || "本城";
+  for (const u of ups) {
+    useEventStore.getState().addLog(
+      `【${u.ministry}】圣上勤政，【${display}】${u.industryLabel}等级提升至 ${u.newLevel} 级。`,
+      "decree"
+    );
+  }
+}
 
 export type BulkAddQuestsResult = {
   added: number;
@@ -27,146 +162,9 @@ function newQuestId(): string {
   return `quest-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-/** 首次安装或无可读存档时的默认军机任务（祖宗之法 · MVA；可在造办处增删改）。 */
+/** 首次安装或无可读存档时的默认军机任务（祖宗之法 · 政务清单 31 项）。 */
 export function createDefaultQuests(): Quest[] {
-  const rows: Array<
-    Pick<Quest, "period" | "title" | "expReward" | "staminaCost"> & {
-      slot: string;
-    }
-  > = [
-    // 早朝 08:00~11:30
-    {
-      period: "早朝",
-      slot: "1",
-      title:
-        "【户部】查阅国库：查验昨日竞价消耗与转化",
-      expReward: 10,
-      staminaCost: 5,
-    },
-    {
-      period: "早朝",
-      slot: "2",
-      title:
-        "【刑部】查杀贪官：下载搜索词报告，精确否定垃圾词",
-      expReward: 20,
-      staminaCost: 10,
-    },
-    {
-      period: "早朝",
-      slot: "3",
-      title:
-        "【兵部】招募壮丁：根据出单词与搜索词进行系统拓词",
-      expReward: 15,
-      staminaCost: 10,
-    },
-    {
-      period: "早朝",
-      slot: "4",
-      title:
-        "【工部】组建军团：导词粗分，配置出价，将新兵编入军团",
-      expReward: 15,
-      staminaCost: 10,
-    },
-    // 晌午 11:50~17:30
-    {
-      period: "晌午",
-      slot: "1",
-      title:
-        "【兵部】侦查敌国：扒取同行落地页、小红书素材与朋友圈",
-      expReward: 15,
-      staminaCost: 10,
-    },
-    {
-      period: "晌午",
-      slot: "2",
-      title:
-        "【礼部】安插间谍：添加同行微信，套取话术与底价情报",
-      expReward: 15,
-      staminaCost: 10,
-    },
-    {
-      period: "晌午",
-      slot: "3",
-      title:
-        "【工部】打造军械：利用 AI 批量洗稿生成创意与高级样式",
-      expReward: 20,
-      staminaCost: 15,
-    },
-    // 傍晚 18:00~20:30
-    {
-      period: "傍晚",
-      slot: "1",
-      title:
-        "【外交】藩属安抚：跟进 K 级客户，发放服务确认与索要举荐",
-      expReward: 10,
-      staminaCost: 5,
-    },
-    {
-      period: "傍晚",
-      slot: "2",
-      title:
-        "【外交】下达通牒：向 L 级客户下发系统锁死最后通牒逼单",
-      expReward: 15,
-      staminaCost: 5,
-    },
-    {
-      period: "傍晚",
-      slot: "3",
-      title:
-        "【外交】缔结同盟：向 Z 级客户投喂实拍案例与证书展示",
-      expReward: 10,
-      staminaCost: 5,
-    },
-    {
-      period: "傍晚",
-      slot: "4",
-      title:
-        "【内务】系统清理：向 B/ZB 级死粉下发最后清理警告并归档",
-      expReward: 10,
-      staminaCost: 5,
-    },
-    // 深夜 20:30~23:30
-    {
-      period: "深夜",
-      slot: "1",
-      title:
-        "【兵部】点火出征：将新备军械（创意图/问答）上传至竞价后台",
-      expReward: 20,
-      staminaCost: 15,
-    },
-    {
-      period: "深夜",
-      slot: "2",
-      title:
-        "【工部】皇城基建：上传云点播课程及考试系统题库配置",
-      expReward: 20,
-      staminaCost: 15,
-    },
-    {
-      period: "深夜",
-      slot: "3",
-      title:
-        "【太医院】停机复盘：提取死单截图，生成复盘奏折呈交 AI 导师",
-      expReward: 25,
-      staminaCost: 10,
-    },
-  ];
-
-  const sortRank = new Map<QuestPeriod, number>();
-  return rows.map((r) => {
-    const n = sortRank.get(r.period) ?? 0;
-    sortRank.set(r.period, n + 1);
-    return {
-      id: `quest-mva-${r.period}-${r.slot}`,
-      period: r.period,
-      title: r.title,
-      completed: false,
-      expReward: r.expReward,
-      staminaCost: r.staminaCost,
-      sortOrder: n * 10,
-      maxCompletionsPerDay: 1,
-    };
-  });
+  return buildDefaultMvaQuestsFromSeeds();
 }
 
 export function createEmptyQuest(
@@ -176,6 +174,27 @@ export function createEmptyQuest(
     partial?.period && PERIODS_ALL.includes(partial.period)
       ? partial.period
       : "早朝";
+  const occurrence: QuestOccurrence =
+    partial?.occurrence === "one_time" ||
+    partial?.occurrence === "daily_once" ||
+    partial?.occurrence === "daily_multiple"
+      ? partial.occurrence
+      : "daily_once";
+  const compensationType: QuestCompensationType =
+    partial?.compensationType === "absolute" ||
+    partial?.compensationType === "compensable"
+      ? partial.compensationType
+      : "compensable";
+  const minCompletionTime =
+    typeof partial?.minCompletionTime === "number" &&
+    Number.isFinite(partial.minCompletionTime)
+      ? Math.max(1, Math.floor(partial.minCompletionTime))
+      : 10;
+  const maxCompletionsPerDay =
+    typeof partial?.maxCompletionsPerDay === "number" &&
+    Number.isFinite(partial.maxCompletionsPerDay)
+      ? Math.max(1, Math.min(99, Math.floor(partial.maxCompletionsPerDay)))
+      : maxFromOccurrence(occurrence);
   return {
     id: newQuestId(),
     period,
@@ -189,15 +208,14 @@ export function createEmptyQuest(
       typeof partial?.staminaCost === "number" && partial.staminaCost >= 0
         ? partial.staminaCost
         : 5,
+    minCompletionTime,
+    compensationType,
+    occurrence,
     sortOrder:
       typeof partial?.sortOrder === "number" && Number.isFinite(partial.sortOrder)
         ? partial.sortOrder
         : 0,
-    maxCompletionsPerDay:
-      typeof partial?.maxCompletionsPerDay === "number" &&
-      Number.isFinite(partial.maxCompletionsPerDay)
-        ? Math.max(1, Math.min(99, Math.floor(partial.maxCompletionsPerDay)))
-        : 1,
+    maxCompletionsPerDay,
   };
 }
 
@@ -208,8 +226,32 @@ function normalizePeriod(p: unknown): QuestPeriod {
   return "早朝";
 }
 
+function normalizeOccurrence(x: unknown): QuestOccurrence {
+  if (x === "one_time" || x === "daily_once" || x === "daily_multiple") {
+    return x;
+  }
+  return "daily_once";
+}
+
+function normalizeCompensation(x: unknown): QuestCompensationType {
+  if (x === "absolute" || x === "compensable") {
+    return x;
+  }
+  return "compensable";
+}
+
 export function migrateQuest(raw: unknown): Quest {
   const r = raw as Record<string, unknown>;
+  const occurrence = normalizeOccurrence(r.occurrence);
+  const compensationType = normalizeCompensation(r.compensationType);
+  const minCompletionTime =
+    typeof r.minCompletionTime === "number" && Number.isFinite(r.minCompletionTime)
+      ? Math.max(1, Math.floor(r.minCompletionTime))
+      : 10;
+  const maxCompletionsPerDay =
+    typeof r.maxCompletionsPerDay === "number" && Number.isFinite(r.maxCompletionsPerDay)
+      ? Math.max(1, Math.min(99, Math.floor(r.maxCompletionsPerDay)))
+      : maxFromOccurrence(occurrence);
   return {
     id: typeof r.id === "string" ? r.id : newQuestId(),
     period: normalizePeriod(r.period),
@@ -223,14 +265,14 @@ export function migrateQuest(raw: unknown): Quest {
       typeof r.staminaCost === "number" && Number.isFinite(r.staminaCost)
         ? Math.max(0, r.staminaCost)
         : 0,
+    minCompletionTime,
+    compensationType,
+    occurrence,
     sortOrder:
       typeof r.sortOrder === "number" && Number.isFinite(r.sortOrder)
         ? r.sortOrder
         : 0,
-    maxCompletionsPerDay:
-      typeof r.maxCompletionsPerDay === "number" && Number.isFinite(r.maxCompletionsPerDay)
-        ? Math.max(1, Math.min(99, Math.floor(r.maxCompletionsPerDay)))
-        : 1,
+    maxCompletionsPerDay,
   };
 }
 
@@ -266,16 +308,30 @@ export interface QuestState {
   lastLoginDate: string;
   /** 军机处当前主攻城池；勘合写入该城 `completedQuestIds`。 */
   activeCityId: string | null;
+  /** 点卯后、呈报前：仅一桩政务可处于计时中 */
+  activeTimer: ActiveQuestTimer | null;
 }
 
-/** 军机点卯成功（非 clearDay）时返回，供邸报 `revert` 与 UI 使用 */
+/** 军机勘合结算成功时返回，供邸报 `revert` 与 UI 使用 */
 export type ToggleQuestCompletionMeta = {
   expGain: number;
   staminaRestored: number;
   tokensMinted: number;
   postDopaminePool: number;
   dopamineExpFed: number;
+  /** 超时从多巴胺池实际扣下的点数（撤回时加回） */
+  dopamineDrained?: number;
+  /** 超时溢出扣掉的民心（撤回时加回） */
+  moraleLost?: number;
+  /** 不可弥补类溢出额外扣的健康（撤回时加回） */
+  healthLost?: number;
 };
+
+/** 点卯仅开启计时器时返回（无勘合邸报） */
+export type QuestTimerStartedAck = { timerStarted: true };
+
+/** `toggleQuest` 在常规点卯（非 clearDay）时的返回值 */
+export type ToggleQuestRunResult = false | "timer_busy" | QuestTimerStartedAck;
 
 export interface QuestActions {
   addQuest: (quest: Quest) => void;
@@ -284,13 +340,32 @@ export interface QuestActions {
   toggleQuest: (
     questId: string,
     opts?: { clearDay?: boolean }
-  ) => boolean | ToggleQuestCompletionMeta;
+  ) => boolean | ToggleQuestRunResult;
+  /** 呈报奏折：按计时结算功勋、多巴胺奖惩；须与 `activeTimer` 一致 */
+  completeQuestWithTimer: (
+    questId: string
+  ) => false | { shoddy: true } | ToggleQuestCompletionMeta;
+  /** 改易方案：跳过计时分支，多巴胺按 `expReward * 2` 注入 */
+  completeQuestWithSopOptimize: (
+    questId: string
+  ) => false | ToggleQuestCompletionMeta;
+  /**
+   * 点卯后 30 秒内撤本次点卯：退还体力、清除计时（未勘合）。
+   * @returns 是否成功撤回
+   */
+  cancelActiveQuestTimer: (questId: string) => boolean;
+  /** 暂停 / 继续：累计暂停不得超过 2 分钟 */
+  toggleActiveQuestTimerPause: (questId: string) => boolean;
+  /** 若当前暂停片段已达 2 分钟上限，自动结束暂停（供 UI 定时调用） */
+  syncActiveQuestPauseIfExhausted: () => void;
   resetDailyQuests: () => void;
   /**
-   * 保证「祖宗之法」MVA 任务集存在：
+   * 保证「祖宗之法」MVA 政务清单（31 项）存在：
    * - 无存档 / 空列表 → 写入完整默认表；
-   * - 仍含旧版 bundled id（`quest-default-*`）→ 整表替换为新版 `quest-mva-*`；
-   * - 已有部分 `quest-mva-*` → 仅补全缺失 id（不删用户自建条目）。
+   * - 仍含旧版 bundled id（`quest-default-*`）→ 整表替换；
+   * - 若全部为 `quest-mva-*` 但存在未知 id 或缺省默认 id → 整表替换（换版目录）；
+   * - 否则仅补全缺失 id（不删用户自建非 MVA 条目）。
+   * 换表后会对各城调用 `pruneQuestProgressForUnknownIds`，剔除无效勘合键。
    */
   ensureMvaQuestCatalog: () => void;
   /** 多行文本批量追加政务；返回新增条数与解析错误（行号+说明）。 */
@@ -307,6 +382,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
       quests: [],
       lastLoginDate: "",
       activeCityId: null,
+      activeTimer: null,
       addQuest: (quest) =>
         set((s) => {
           const id = quest.id || newQuestId();
@@ -316,6 +392,10 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             period,
             expReward: quest.expReward,
             staminaCost: quest.staminaCost,
+            minCompletionTime: quest.minCompletionTime,
+            compensationType: quest.compensationType,
+            occurrence: quest.occurrence,
+            maxCompletionsPerDay: quest.maxCompletionsPerDay,
           });
           const inP = s.quests.filter((q) => q.period === period);
           const minSo =
@@ -337,9 +417,19 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           return { quests: [...s.quests, next] };
         }),
       removeQuest: (id) =>
-        set((s) => ({
-          quests: s.quests.filter((q) => q.id !== id),
-        })),
+        set((s) => {
+          const t = s.activeTimer;
+          let nextTimer = s.activeTimer;
+          if (t?.questId === id) {
+            const q = s.quests.find((x) => x.id === id);
+            if (q) useEmperorStore.getState().addStamina(q.staminaCost);
+            nextTimer = null;
+          }
+          return {
+            quests: s.quests.filter((q) => q.id !== id),
+            activeTimer: nextTimer,
+          };
+        }),
       updateQuest: (id, data) =>
         set((s) => ({
           quests: s.quests.map((q) => {
@@ -357,17 +447,30 @@ export const useQuestStore = create<QuestState & QuestActions>()(
                   : Math.min(...inNew.map((x) => x.sortOrder ?? 0));
               next.sortOrder = minSo - 1;
             }
+            if (data.occurrence !== undefined && data.maxCompletionsPerDay === undefined) {
+              next.maxCompletionsPerDay = maxFromOccurrence(
+                normalizeOccurrence(next.occurrence)
+              );
+            }
+            if (typeof next.minCompletionTime === "number") {
+              next.minCompletionTime = Math.max(
+                1,
+                Math.floor(next.minCompletionTime)
+              );
+            }
             if (typeof next.maxCompletionsPerDay === "number") {
               next.maxCompletionsPerDay = Math.max(
                 1,
                 Math.min(99, Math.floor(next.maxCompletionsPerDay))
               );
             }
+            next.occurrence = normalizeOccurrence(next.occurrence);
+            next.compensationType = normalizeCompensation(next.compensationType);
             return next;
           }),
         })),
       toggleQuest: (questId, opts) => {
-        const { activeCityId, quests } = get();
+        const { activeCityId, quests, activeTimer } = get();
         if (!activeCityId) return false;
         const quest = quests.find((q) => q.id === questId);
         if (!quest) return false;
@@ -376,8 +479,20 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         if (!city) return false;
 
         if (opts?.clearDay) {
+          if (activeTimer?.questId === questId) {
+            useEmperorStore.getState().addStamina(quest.staminaCost);
+          }
           map.clearQuestCompletionsForDay(activeCityId, questId);
+          set((s) => ({
+            activeTimer:
+              s.activeTimer?.questId === questId ? null : s.activeTimer,
+          }));
           return true;
+        }
+
+        if (activeTimer) {
+          if (activeTimer.questId !== questId) return "timer_busy";
+          return false;
         }
 
         const max = Math.max(1, Math.min(99, quest.maxCompletionsPerDay ?? 1));
@@ -387,47 +502,223 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         const emperor = useEmperorStore.getState();
         if (emperor.stamina < quest.staminaCost) return false;
 
-        const inc = map.incrementQuestCompletion(activeCityId, questId, max);
-        if (!inc) return false;
-
         emperor.consumeStamina(quest.staminaCost);
-        const mvaBonus =
-          emperor.isNomadMode && quest.id.startsWith("quest-mva-");
-        const baseMerit = mvaBonus
-          ? Math.round(quest.expReward * 1.2)
-          : quest.expReward;
+        set({
+          activeTimer: {
+            questId,
+            startTime: Date.now(),
+            pausedMs: 0,
+            pauseStartedAt: null,
+          },
+        });
+        return { timerStarted: true };
+      },
+      syncActiveQuestPauseIfExhausted: () => {
+        set((s) => {
+          const t = s.activeTimer;
+          if (!t?.pauseStartedAt) return s;
+          const now = Date.now();
+          const pausedCommitted = clampPauseCommitted(t.pausedMs);
+          const seg = now - t.pauseStartedAt;
+          const cap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
+          if (seg < cap) return s;
+          return {
+            activeTimer: {
+              ...t,
+              pausedMs: pausedCommitted + cap,
+              pauseStartedAt: null,
+            },
+          };
+        });
+      },
+      cancelActiveQuestTimer: (questId) => {
+        const t = get().activeTimer;
+        if (!t || t.questId !== questId) return false;
+        if (Date.now() - t.startTime > QUEST_TIMER_CANCEL_WINDOW_MS) return false;
+        const q = get().quests.find((x) => x.id === questId);
+        if (q) useEmperorStore.getState().addStamina(q.staminaCost);
+        set({ activeTimer: null });
+        return true;
+      },
+      toggleActiveQuestTimerPause: (questId) => {
+        const t = get().activeTimer;
+        if (!t || t.questId !== questId) return false;
+        const now = Date.now();
+        const pausedCommitted = clampPauseCommitted(t.pausedMs);
+        if (t.pauseStartedAt != null) {
+          const seg = now - t.pauseStartedAt;
+          const cap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
+          const add = Math.min(Math.max(0, seg), cap);
+          set({
+            activeTimer: {
+              ...t,
+              pausedMs: pausedCommitted + add,
+              pauseStartedAt: null,
+            },
+          });
+          return true;
+        }
+        if (pausedCommitted >= QUEST_TIMER_MAX_PAUSE_MS) return false;
+        set({ activeTimer: { ...t, pauseStartedAt: now } });
+        return true;
+      },
+      completeQuestWithTimer: (questId) => {
+        get().syncActiveQuestPauseIfExhausted();
+        const { activeCityId, quests, activeTimer } = get();
+        if (!activeTimer || activeTimer.questId !== questId) return false;
+        const quest = quests.find((q) => q.id === questId);
+        if (!quest || !activeCityId) return false;
+        const map = useMapStore.getState();
+        const city = map.cities.find((c) => c.id === activeCityId);
+        if (!city) return false;
 
-        const cityForBuff = useMapStore
-          .getState()
-          .cities.find((c) => c.id === activeCityId);
-        const agriLv = Math.max(
-          0,
-          Math.min(10, Math.floor(cityForBuff?.agriLevel ?? 0))
+        const now = Date.now();
+        const T_actual =
+          getQuestTimerEffectiveElapsedMs(activeTimer, now) / 60_000;
+        const T_standard = Math.max(
+          1,
+          Math.floor(quest.minCompletionTime ?? 10)
         );
-        const meritWithAgri = Math.max(
-          0,
-          Math.round(baseMerit * (1 + agriLv * 0.05))
+        const T_floor = T_standard * 0.5;
+
+        if (T_actual < T_floor) {
+          useEmperorStore.getState().addStamina(quest.staminaCost);
+          set({ activeTimer: null });
+          return { shoddy: true };
+        }
+
+        const max = Math.max(1, Math.min(99, quest.maxCompletionsPerDay ?? 1));
+        const count = getQuestDailyCount(city, questId);
+        if (count >= max) {
+          set({ activeTimer: null });
+          return false;
+        }
+
+        const inc = map.incrementQuestCompletion(activeCityId, questId, max);
+        if (!inc) {
+          set({ activeTimer: null });
+          return false;
+        }
+
+        const emperor = useEmperorStore.getState();
+        const { meritWithAgri, baseMerit } = computeQuestMeritForCity(
+          quest,
+          activeCityId
         );
 
         emperor.addExp(meritWithAgri);
-        const dop = emperor.feedDopamineFromQuestReward(meritWithAgri);
+        const dMain = emperor.feedDopamineFromQuestReward(meritWithAgri);
+        let tokensMinted = dMain.tokensMinted;
+        let dopamineExpFed = dMain.dopamineExpFed;
+        let postDopaminePool = dMain.postDopaminePool;
 
-        const sector = classifyIndustrialSectorFromQuestTitle(quest.title);
-        if (sector) {
-          const ups = map.applyIndustrialQuestProgress(
-            activeCityId,
-            sector,
-            baseMerit
-          );
-          const display =
-            cityForBuff?.alias?.trim() || cityForBuff?.name || "本城";
-          for (const u of ups) {
+        let dopamineDrained = 0;
+        let moraleLostForRevert = 0;
+        let healthLostForRevert = 0;
+
+        if (T_floor <= T_actual && T_actual < T_standard) {
+          const diff = T_standard - T_actual;
+          const bonusE = Math.max(0, Math.floor(diff));
+          if (bonusE > 0) {
+            const d2 = useEmperorStore
+              .getState()
+              .feedDopamineFromQuestReward(bonusE);
+            tokensMinted += d2.tokensMinted;
+            dopamineExpFed += d2.dopamineExpFed;
+            postDopaminePool = d2.postDopaminePool;
             useEventStore.getState().addLog(
-              `【${u.ministry}】圣上勤政，【${display}】${u.industryLabel}等级提升至 ${u.newLevel} 级。`,
-              "decree"
+              `【内务府】圣上处理政务神速，多巴胺能量额外凝聚 ${bonusE.toLocaleString("zh-CN")} 点。`,
+              "decree",
+              { emphasis: "goldFlash" }
             );
           }
+        } else if (T_actual > T_standard) {
+          const overTime = Math.max(0, Math.floor(T_actual - T_standard));
+          if (overTime > 0) {
+            const pen = useEmperorStore
+              .getState()
+              .applyQuestTimerOvertimePenalty({
+                overTimeMinutes: overTime,
+                compensationType: quest.compensationType,
+              });
+            postDopaminePool = pen.postDopaminePool;
+            dopamineDrained = pen.dopamineDrained;
+            moraleLostForRevert = pen.moraleLost;
+            healthLostForRevert = pen.healthLost;
+            if (pen.dopamineDrained > 0) {
+              useEventStore.getState().addLog(
+                `【太医院】圣上处理政务冗长，心力损耗，多巴胺能量溢出 ${pen.dopamineDrained.toLocaleString("zh-CN")} 点。`,
+                "battle"
+              );
+            }
+            if (pen.overflow > 0) {
+              useEventStore.getState().addLog(
+                "【宗人府】政务迁延日久，蓄池枯竭，已致民心动摇。",
+                "battle",
+                { emphasis: "calamity" }
+              );
+            }
+          }
         }
+
+        if (T_actual > T_standard) {
+          useEmperorStore.getState().pulseDopaminePool("drain");
+        } else {
+          useEmperorStore.getState().pulseDopaminePool("gain");
+        }
+
+        emitIndustrialProgressForQuest(quest, activeCityId, baseMerit);
+
+        set({ activeTimer: null });
+
+        return {
+          expGain: meritWithAgri,
+          staminaRestored: quest.staminaCost,
+          tokensMinted,
+          postDopaminePool,
+          dopamineExpFed,
+          ...(dopamineDrained > 0 ? { dopamineDrained } : {}),
+          ...(moraleLostForRevert > 0 ? { moraleLost: moraleLostForRevert } : {}),
+          ...(healthLostForRevert > 0 ? { healthLost: healthLostForRevert } : {}),
+        };
+      },
+      completeQuestWithSopOptimize: (questId) => {
+        get().syncActiveQuestPauseIfExhausted();
+        const { activeCityId, quests, activeTimer } = get();
+        if (!activeTimer || activeTimer.questId !== questId) return false;
+        const quest = quests.find((q) => q.id === questId);
+        if (!quest || !activeCityId) return false;
+        const map = useMapStore.getState();
+        const city = map.cities.find((c) => c.id === activeCityId);
+        if (!city) return false;
+
+        const max = Math.max(1, Math.min(99, quest.maxCompletionsPerDay ?? 1));
+        const count = getQuestDailyCount(city, questId);
+        if (count >= max) {
+          set({ activeTimer: null });
+          return false;
+        }
+
+        const inc = map.incrementQuestCompletion(activeCityId, questId, max);
+        if (!inc) {
+          set({ activeTimer: null });
+          return false;
+        }
+
+        const emperor = useEmperorStore.getState();
+        const { meritWithAgri, baseMerit } = computeQuestMeritForCity(
+          quest,
+          activeCityId
+        );
+        emperor.addExp(meritWithAgri);
+
+        const sopE = Math.max(0, Math.floor(quest.expReward * 2));
+        const dop = emperor.feedDopamineFromQuestReward(sopE);
+
+        emitIndustrialProgressForQuest(quest, activeCityId, baseMerit);
+
+        set({ activeTimer: null });
+        useEmperorStore.getState().pulseDopaminePool("gain");
 
         return {
           expGain: meritWithAgri,
@@ -439,21 +730,45 @@ export const useQuestStore = create<QuestState & QuestActions>()(
       },
       resetDailyQuests: () => {
         const today = todayKey();
-        const { lastLoginDate } = get();
+        const { lastLoginDate, quests, activeTimer } = get();
         if (lastLoginDate === today) return;
+        if (activeTimer) {
+          const qq = quests.find((q) => q.id === activeTimer.questId);
+          if (qq) useEmperorStore.getState().addStamina(qq.staminaCost);
+        }
+        const oneTimeIds = new Set(
+          quests.filter((q) => q.occurrence === "one_time").map((q) => q.id)
+        );
         const citiesBefore = useMapStore.getState().cities;
         const tribute = totalVassalDailyTribute(citiesBefore);
         useMapStore.setState((s) => ({
-          cities: s.cities.map((c) => ({
-            ...c,
-            completedQuestIds: [],
-            questCompletedAt: {},
-            questDailyCompletions: {},
-          })),
+          cities: s.cities.map((c) => {
+            const nextDaily: Record<string, number> = {};
+            const nextAt: Record<string, number> = {};
+            for (const qid of Array.from(oneTimeIds)) {
+              const n = getQuestDailyCount(c, qid);
+              if (n > 0) {
+                nextDaily[qid] = n;
+                const t = c.questCompletedAt?.[qid];
+                nextAt[qid] =
+                  typeof t === "number" && Number.isFinite(t) ? t : 0;
+              }
+            }
+            const completedQuestIds = Object.keys(nextDaily).filter(
+              (k) => (nextDaily[k] ?? 0) > 0
+            );
+            return {
+              ...c,
+              questDailyCompletions: nextDaily,
+              questCompletedAt: nextAt,
+              completedQuestIds,
+            };
+          }),
         }));
         set({
-          quests: get().quests.map((q) => ({ ...q, completed: false })),
+          quests: quests.map((q) => ({ ...q, completed: false })),
           lastLoginDate: today,
+          activeTimer: null,
         });
         if (tribute > 0) {
           useEmperorStore.getState().injectGold(tribute, { silent: true });
@@ -465,23 +780,48 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         }
       },
       ensureMvaQuestCatalog: () => {
-        set((s) => {
-          const quests = s.quests;
-          if (quests.length === 0) {
-            return { quests: createDefaultQuests() };
+        const defaults = createDefaultQuests();
+        const validIdSet = defaultMvaQuestIdSet();
+        const snap = get();
+        let { quests } = snap;
+
+        const replaceCatalog = (next: Quest[]) => {
+          const s = get();
+          if (s.activeTimer) {
+            const qq = s.quests.find((x) => x.id === s.activeTimer!.questId);
+            if (qq) useEmperorStore.getState().addStamina(qq.staminaCost);
           }
-          const hasLegacyBundled = quests.some((q) =>
-            q.id.startsWith("quest-default-")
-          );
-          if (hasLegacyBundled) {
-            return { quests: createDefaultQuests() };
+          set({ quests: next, activeTimer: null });
+        };
+
+        if (quests.length === 0) {
+          useMapStore.getState().pruneQuestProgressForUnknownIds(validIdSet);
+          replaceCatalog(defaults);
+          return;
+        }
+        if (quests.some((q) => q.id.startsWith("quest-default-"))) {
+          useMapStore.getState().pruneQuestProgressForUnknownIds(validIdSet);
+          replaceCatalog(defaults);
+          return;
+        }
+        const onlyMva =
+          quests.length > 0 && quests.every((q) => q.id.startsWith("quest-mva-"));
+        if (onlyMva) {
+          const hasOrphan = quests.some((q) => !validIdSet.has(q.id));
+          const missingSome = defaults.some((d) => !quests.some((q) => q.id === d.id));
+          if (hasOrphan || missingSome) {
+            useMapStore.getState().pruneQuestProgressForUnknownIds(validIdSet);
+            replaceCatalog(defaults);
+            return;
           }
-          const defaults = createDefaultQuests();
-          const have = new Set(quests.map((q) => q.id));
-          const missing = defaults.filter((d) => !have.has(d.id));
-          if (missing.length === 0) return {};
-          return { quests: [...quests, ...missing] };
-        });
+        }
+        const missing = defaults.filter((d) => !quests.some((q) => q.id === d.id));
+        if (missing.length === 0) return;
+        const merged = [...quests, ...missing];
+        useMapStore
+          .getState()
+          .pruneQuestProgressForUnknownIds(new Set(merged.map((q) => q.id)));
+        set({ quests: merged });
       },
       bulkAddQuests: (text) => {
         const { items, errors } = parseBulkQuestText(text);
@@ -504,8 +844,11 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             completed: false,
             expReward: d.expReward,
             staminaCost: d.staminaCost,
+            minCompletionTime: d.minCompletionTime ?? 10,
+            compensationType: d.compensationType ?? "compensable",
+            occurrence: d.occurrence ?? "daily_once",
             sortOrder,
-            maxCompletionsPerDay: 1,
+            maxCompletionsPerDay: maxFromOccurrence(d.occurrence ?? "daily_once"),
           };
           mutable.push(q);
           newQuests.push(q);
@@ -518,11 +861,25 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           ids.filter((id) => typeof id === "string" && id.length > 0)
         );
         if (idSet.size === 0) return;
+        const t = get().activeTimer;
+        if (t && idSet.has(t.questId)) {
+          const q = get().quests.find((x) => x.id === t.questId);
+          if (q) useEmperorStore.getState().addStamina(q.staminaCost);
+        }
         set((s) => ({
           quests: s.quests.filter((q) => !idSet.has(q.id)),
+          activeTimer:
+            t && idSet.has(t.questId) ? null : s.activeTimer,
         }));
       },
-      setActiveCityId: (id) => set({ activeCityId: id }),
+      setActiveCityId: (id) => {
+        const t = get().activeTimer;
+        if (t) {
+          const q = get().quests.find((x) => x.id === t.questId);
+          if (q) useEmperorStore.getState().addStamina(q.staminaCost);
+        }
+        set({ activeCityId: id, activeTimer: null });
+      },
       reorderQuestsInPeriod: (period, orderedIds) =>
         set((s) => {
           const idSet = new Set(orderedIds);
@@ -551,6 +908,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         quests: s.quests,
         lastLoginDate: s.lastLoginDate,
         activeCityId: s.activeCityId,
+        activeTimer: s.activeTimer,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<QuestState> | undefined;
@@ -564,6 +922,10 @@ export const useQuestStore = create<QuestState & QuestActions>()(
               p?.activeCityId === null || typeof p?.activeCityId === "string"
                 ? p?.activeCityId ?? null
                 : current.activeCityId,
+            activeTimer:
+              p && "activeTimer" in p
+                ? parseActiveTimer(p.activeTimer)
+                : current.activeTimer,
           };
         }
         const migrated = p.quests.map((q) => migrateQuest(q));
@@ -579,6 +941,10 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             p.activeCityId === null || typeof p.activeCityId === "string"
               ? p.activeCityId
               : current.activeCityId,
+          activeTimer:
+            p && "activeTimer" in p
+              ? parseActiveTimer(p.activeTimer)
+              : current.activeTimer,
         };
       },
     }

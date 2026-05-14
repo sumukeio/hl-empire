@@ -30,7 +30,7 @@ export interface City {
   completedQuestIds: string[];
   /** 各政务在本城最近一次勘合时间戳（毫秒）；多次勘合时更新为最后一次 */
   questCompletedAt: Record<string, number>;
-  /** 当前自然日内各任务已勘合次数；跨日 resetDailyQuests 时整表清空 */
+  /** 当前自然日内各任务已勘合次数；跨日 resetDailyQuests 时清空「非一次性」条目，一次性任务进度永久保留 */
   questDailyCompletions: Record<string, number>;
 }
 
@@ -55,6 +55,12 @@ export type SubmitDailyReportResult = SubmitCityReportResult;
 
 export type QuestPeriod = "早朝" | "晌午" | "傍晚" | "深夜";
 
+/** 政务时效：一次性跨日不重置进度；每日一次/多次按 max 与跨日规则 */
+export type QuestOccurrence = "one_time" | "daily_once" | "daily_multiple";
+
+/** 补救分类：绝对类跨日仍提示风险；可补办类不计入「不可弥补」警报 */
+export type QuestCompensationType = "absolute" | "compensable";
+
 export interface Quest {
   id: string;
   period: QuestPeriod;
@@ -62,9 +68,15 @@ export interface Quest {
   completed: boolean;
   expReward: number;
   staminaCost: number;
+  /** 枢密院：预计最短耗时（分钟），仅展示与规划用 */
+  minCompletionTime: number;
+  /** 绝对不可弥补 | 可疯狂弥补 */
+  compensationType: QuestCompensationType;
+  /** 一次性 | 每日一次 | 每日多次（与 `maxCompletionsPerDay` 一致） */
+  occurrence: QuestOccurrence;
   /** 同一时辰内展示顺序，数值越小越靠上；可拖动调整 */
   sortOrder: number;
-  /** 本城本自然日该任务最多可勘合次数（默认 1，跨日由 resetDailyQuests 清零计数） */
+  /** 本城本自然日该任务最多可勘合次数；与 `occurrence` 一致（一次性 / 每日一次 / 每日多次） */
   maxCompletionsPerDay: number;
 }
 
@@ -86,6 +98,12 @@ export type EventLogRevert =
       postDopaminePool?: number;
       /** 本条勘合注入池内的功勋量（与 expSubtracted 通常相同） */
       dopamineExpFed?: number;
+      /** 超时从池中实际扣下的点数；撤回时先加回再反推投喂前池量 */
+      dopamineDrained?: number;
+      /** 超时溢出扣掉的民心（撤回时加回） */
+      moraleLost?: number;
+      /** 不可弥补类溢出额外扣的健康（撤回时加回） */
+      healthLost?: number;
     };
 
 export interface EventLog {

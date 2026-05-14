@@ -61,6 +61,34 @@ export function isQuestFullyCompletedToday(
   return getQuestDailyCount(city, quest.id) >= max;
 }
 
+/** 移除不在当前任务表中的勘合进度键（换版任务集时防止脏键） */
+export function pruneCityQuestProgress(
+  city: City,
+  validQuestIds: ReadonlySet<string>
+): City {
+  const qd: Record<string, number> = {};
+  for (const [k, v] of Object.entries(city.questDailyCompletions ?? {})) {
+    if (!validQuestIds.has(k)) continue;
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      qd[k] = Math.min(99, Math.floor(v));
+    }
+  }
+  const qa: Record<string, number> = {};
+  for (const [k, v] of Object.entries(city.questCompletedAt ?? {})) {
+    if (!validQuestIds.has(k)) continue;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      qa[k] = v;
+    }
+  }
+  const completedQuestIds = Object.keys(qd).filter((id) => (qd[id] ?? 0) > 0);
+  return {
+    ...city,
+    questDailyCompletions: qd,
+    questCompletedAt: qa,
+    completedQuestIds,
+  };
+}
+
 /** 首次安装或无可读存档时的默认征战目标列表（可随后在造办处增删改）。 */
 export function createDefaultCities(): City[] {
   return DEFAULT_CITY_NAMES.map((name, index) => ({
@@ -264,6 +292,8 @@ export interface MapActions {
   clearQuestCompletionsForDay: (cityId: string, questId: string) => void;
   /** 撤回一次勘合（次数 −1）；返回是否曾大于 0 */
   decrementQuestCompletion: (cityId: string, questId: string) => boolean;
+  /** 各城仅保留 `validQuestIds` 内的勘合键 */
+  pruneQuestProgressForUnknownIds: (validQuestIds: ReadonlySet<string>) => void;
   /** 本城产业经验 +delta，可能升级；返回升级事件供邸报 */
   applyIndustrialQuestProgress: (
     cityId: string,
@@ -461,6 +491,11 @@ export const useMapStore = create<MapState & MapActions>()(
           }),
         }));
         return mutated;
+      },
+      pruneQuestProgressForUnknownIds: (validQuestIds) => {
+        set((s) => ({
+          cities: s.cities.map((c) => pruneCityQuestProgress(c, validQuestIds)),
+        }));
       },
       applyIndustrialQuestProgress: (cityId, sector, meritDelta) => {
         const levelUps: IndustrialLevelUpEvent[] = [];

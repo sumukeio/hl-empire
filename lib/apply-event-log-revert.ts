@@ -58,6 +58,9 @@ export function applyEventLogRevert(log: EventLog): ApplyRevertResult {
       tokensSubtracted: rev.tokensSubtracted,
       postDopaminePool: rev.postDopaminePool,
       dopamineExpFed: rev.dopamineExpFed,
+      dopamineDrained: rev.dopamineDrained,
+      moraleLost: rev.moraleLost,
+      healthLost: rev.healthLost,
     });
     return { ok: true };
   }

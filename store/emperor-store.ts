@@ -10,6 +10,7 @@ import {
 import { useEventStore } from "./event-store";
 import type {
   CityDailyReportData,
+  QuestCompensationType,
   RecordExpenseInput,
   SubmitCityReportResult,
 } from "./types";
@@ -86,6 +87,8 @@ export interface EmperorState {
   isNomadMode: boolean;
   /** 军费余额（百度余额）；战报消耗从此扣，由国库 `allocateFunds` 拨入 */
   militaryFunds: number;
+  /** 不持久化：多巴胺蓄池结算动画（流光 / 溢出） */
+  dopaminePoolAnim: "none" | "gain" | "drain";
 }
 
 export interface EmperorActions {
@@ -98,6 +101,29 @@ export interface EmperorActions {
     tokensMinted: number;
     postDopaminePool: number;
     dopamineExpFed: number;
+  };
+  /**
+   * 政务超时等：从多巴胺池扣除点数（不扣翻牌券），实际扣除量受当前池量限制。
+   */
+  drainDopaminePoolEnergy: (amount: number) => {
+    drained: number;
+    postDopaminePool: number;
+  };
+  /** 触发内务府蓄池流光（gain）或溢出警示（drain）；不写入持久化 */
+  pulseDopaminePool: (kind: "gain" | "drain") => void;
+  /**
+   * 御定刻漏超时：从多巴胺池扣 `overTimeMinutes` 点（可为负溢出）；
+   * 蓄池不足部分记为 overflow，每 2 点溢出扣 1 民心；不可弥补类额外扣 1 健康。
+   */
+  applyQuestTimerOvertimePenalty: (input: {
+    overTimeMinutes: number;
+    compensationType: QuestCompensationType;
+  }) => {
+    postDopaminePool: number;
+    dopamineDrained: number;
+    overflow: number;
+    moraleLost: number;
+    healthLost: number;
   };
   consumeStamina: (amount: number) => void;
   /** 恢复体力（0–100），不改动 healthCombo */
@@ -162,6 +188,11 @@ export interface EmperorActions {
     tokensSubtracted: number;
     postDopaminePool?: number;
     dopamineExpFed?: number;
+    dopamineDrained?: number;
+    /** 超时溢出等扣掉的民心（撤回时加回） */
+    moraleLost?: number;
+    /** 不可弥补类溢出额外扣的健康（撤回时加回） */
+    healthLost?: number;
   }) => void;
   /** 国库 → 军费：从 `gold` 拨入 `militaryFunds` */
   allocateFunds: (amount: number) => boolean;
@@ -192,6 +223,7 @@ const defaultState: EmperorState = {
   literature: 10,
   isNomadMode: false,
   militaryFunds: 0,
+  dopaminePoolAnim: "none",
 };
 
 export const useEmperorStore = create<EmperorState & EmperorActions>()(
@@ -243,6 +275,74 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           tokensMinted,
           postDopaminePool,
           dopamineExpFed: E,
+        };
+      },
+      drainDopaminePoolEnergy: (amount) => {
+        const want = Math.max(
+          0,
+          Math.floor(Number.isFinite(amount) ? (amount as number) : 0)
+        );
+        let drained = 0;
+        let postDopaminePool = 0;
+        set((s) => {
+          const p0 = clamp(Math.floor(s.dopaminePool), 0, 14);
+          drained = Math.min(want, p0);
+          postDopaminePool = p0 - drained;
+          return { dopaminePool: postDopaminePool };
+        });
+        return { drained, postDopaminePool };
+      },
+      pulseDopaminePool: (kind) => {
+        set({ dopaminePoolAnim: kind });
+      },
+      applyQuestTimerOvertimePenalty: ({ overTimeMinutes, compensationType }) => {
+        const over = Math.max(
+          0,
+          Math.floor(
+            Number.isFinite(overTimeMinutes) ? (overTimeMinutes as number) : 0
+          )
+        );
+        if (over <= 0) {
+          const pool = clamp(Math.floor(get().dopaminePool), 0, 14);
+          return {
+            postDopaminePool: pool,
+            dopamineDrained: 0,
+            overflow: 0,
+            moraleLost: 0,
+            healthLost: 0,
+          };
+        }
+        let dopamineDrained = 0;
+        let postDopaminePool = 0;
+        let overflow = 0;
+        let moraleLost = 0;
+        let healthLost = 0;
+        set((s) => {
+          const P = clamp(Math.floor(s.dopaminePool), 0, 14);
+          const newPool = P - over;
+          if (newPool >= 0) {
+            postDopaminePool = newPool;
+            dopamineDrained = over;
+          } else {
+            overflow = Math.abs(newPool);
+            postDopaminePool = 0;
+            dopamineDrained = P;
+            moraleLost = Math.floor(overflow / 2);
+            healthLost = compensationType === "absolute" ? 1 : 0;
+          }
+          return {
+            dopaminePool: postDopaminePool,
+            morale: clamp(s.morale - moraleLost, 0, 100),
+            health: clamp(s.health - healthLost, 0, 100),
+          };
+        });
+        const snap = get();
+        return {
+          postDopaminePool: clamp(Math.floor(snap.dopaminePool), 0, 14),
+          dopamineDrained,
+          overflow,
+          moraleLost,
+          healthLost,
         };
       },
       consumeStamina: (amount) => {
@@ -625,11 +725,16 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         tokensSubtracted,
         postDopaminePool,
         dopamineExpFed,
+        dopamineDrained,
+        moraleLost,
+        healthLost,
       }) => {
         set((s) => {
           const stamina = clamp(s.stamina + staminaRestored, 0, 100);
           const exp = Math.max(0, s.exp - expSubtracted);
           const tokens = Math.max(0, s.tokens - tokensSubtracted);
+          const mLost = Math.max(0, Math.floor(moraleLost ?? 0));
+          const hLost = Math.max(0, Math.floor(healthLost ?? 0));
           let dopaminePool = s.dopaminePool;
           if (
             typeof postDopaminePool === "number" &&
@@ -640,8 +745,9 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
             const k = Math.max(0, Math.floor(tokensSubtracted));
             const P1 = clamp(Math.floor(postDopaminePool), 0, 14);
             const fed = Math.max(0, Math.floor(dopamineExpFed));
-            const pre =
-              DOPAMINE_ENERGY_PER_TICKET * k + P1 - fed;
+            const D = Math.max(0, Math.floor(dopamineDrained ?? 0));
+            const Pfeed = clamp(P1 + D, 0, 14);
+            const pre = DOPAMINE_ENERGY_PER_TICKET * k + Pfeed - fed;
             dopaminePool = clamp(pre, 0, 14);
           }
           return {
@@ -650,6 +756,8 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
             level: computeLevelFromExp(exp),
             tokens,
             dopaminePool,
+            morale: clamp(s.morale + mLost, 0, 100),
+            health: clamp(s.health + hLost, 0, 100),
           };
         });
       },

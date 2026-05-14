@@ -6,6 +6,7 @@ export {
   createEmptyCity,
   getQuestDailyCount,
   isQuestFullyCompletedToday,
+  pruneCityQuestProgress,
 } from "./map-store";
 export type { BulkAddCitiesResult, TourCityResult } from "./map-store";
 export {
@@ -13,8 +14,18 @@ export {
   createDefaultQuests,
   createEmptyQuest,
   hydrateQuestSortOrderFromPersistOrder,
+  QUEST_TIMER_CANCEL_WINDOW_MS,
+  QUEST_TIMER_MAX_PAUSE_MS,
+  getQuestTimerEffectiveElapsedMs,
+  getQuestTimerPauseBudgetUsedMs,
 } from "./quest-store";
-export type { BulkAddQuestsResult, ToggleQuestCompletionMeta } from "./quest-store";
+export type {
+  BulkAddQuestsResult,
+  ToggleQuestCompletionMeta,
+  ToggleQuestRunResult,
+  QuestTimerStartedAck,
+  ActiveQuestTimer,
+} from "./quest-store";
 export { useEventStore } from "./event-store";
 export {
   usePrefsStore,
@@ -30,6 +41,8 @@ export type {
   DailyBattleReportInput,
   PersonalExpenseCategory,
   Quest,
+  QuestCompensationType,
+  QuestOccurrence,
   QuestPatch,
   QuestPeriod,
   RecordExpenseInput,

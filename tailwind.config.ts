@@ -74,6 +74,15 @@ const config: Config = {
           "70%": { transform: "scale(0.96)" },
           "100%": { transform: "scale(1)" },
         },
+        "imperial-dopamine-bleed": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "25%": { transform: "translateX(-2px)" },
+          "75%": { transform: "translateX(2px)" },
+        },
+        "imperial-dopamine-shimmer": {
+          "0%": { backgroundPosition: "0% 50%" },
+          "100%": { backgroundPosition: "200% 50%" },
+        },
       },
       animation: {
         "imperial-gold-glow":
@@ -81,6 +90,10 @@ const config: Config = {
         "imperial-vitals-alert":
           "imperial-vitals-alert 1.05s ease-in-out infinite",
         "imperial-token-pop": "imperial-token-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "imperial-dopamine-bleed":
+          "imperial-dopamine-bleed 0.35s ease-in-out infinite",
+        "imperial-dopamine-shimmer":
+          "imperial-dopamine-shimmer 1.35s linear infinite",
       },
     },
   },

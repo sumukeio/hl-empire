@@ -60,6 +60,18 @@ function parseLogRevert(r: Record<string, unknown>): EventLog["revert"] | undefi
     typeof o.dopamineExpFed === "number" && Number.isFinite(o.dopamineExpFed)
       ? Math.max(0, Math.floor(o.dopamineExpFed))
       : undefined;
+  const dopamineDrained =
+    typeof o.dopamineDrained === "number" && Number.isFinite(o.dopamineDrained)
+      ? Math.max(0, Math.floor(o.dopamineDrained))
+      : undefined;
+  const moraleLost =
+    typeof o.moraleLost === "number" && Number.isFinite(o.moraleLost)
+      ? Math.max(0, Math.floor(o.moraleLost))
+      : undefined;
+  const healthLost =
+    typeof o.healthLost === "number" && Number.isFinite(o.healthLost)
+      ? Math.max(0, Math.floor(o.healthLost))
+      : undefined;
   if (!cityId || !questId) return undefined;
   return {
     kind: "quest_complete",
@@ -70,6 +82,11 @@ function parseLogRevert(r: Record<string, unknown>): EventLog["revert"] | undefi
     tokensSubtracted,
     ...(postDopaminePool !== undefined ? { postDopaminePool } : {}),
     ...(dopamineExpFed !== undefined ? { dopamineExpFed } : {}),
+    ...(dopamineDrained !== undefined && dopamineDrained > 0
+      ? { dopamineDrained }
+      : {}),
+    ...(moraleLost !== undefined && moraleLost > 0 ? { moraleLost } : {}),
+    ...(healthLost !== undefined && healthLost > 0 ? { healthLost } : {}),
   };
 }
 
