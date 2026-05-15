@@ -16,6 +16,12 @@ import {
   type IndustrialLevelUpEvent,
   type IndustrialSector,
 } from "@/lib/city-industry";
+import {
+  createTongwuSiCityRecord,
+  isTongwuSiCity,
+  TONGWU_SI_CITY_ID,
+  TONGWU_SI_DEFAULT_NAME,
+} from "@/lib/tongwu-si";
 
 const DEFAULT_CITY_NAMES = [
   "长安",
@@ -200,10 +206,22 @@ export function migrateCity(raw: unknown): City {
   const completedQuestIds = Object.keys(questDailyCompletions).filter(
     (k) => (questDailyCompletions[k] ?? 0) > 0
   );
+  const id = typeof r.id === "string" ? r.id : newCityId();
+  const name = typeof r.name === "string" ? r.name : "未命名";
+  const isTongwuSi =
+    r.isTongwuSi === true ||
+    id === TONGWU_SI_CITY_ID ||
+    name.trim() === TONGWU_SI_DEFAULT_NAME;
   const city: City = {
-    id: typeof r.id === "string" ? r.id : newCityId(),
-    name: typeof r.name === "string" ? r.name : "未命名",
-    alias: typeof r.alias === "string" ? r.alias : "",
+    id: isTongwuSi ? TONGWU_SI_CITY_ID : id,
+    isTongwuSi: isTongwuSi ? true : undefined,
+    name: isTongwuSi ? TONGWU_SI_DEFAULT_NAME : name,
+    alias:
+      typeof r.alias === "string" && r.alias.trim()
+        ? r.alias
+        : isTongwuSi
+          ? createTongwuSiCityRecord().alias
+          : "",
     status: st,
     memo: typeof r.memo === "string" ? r.memo : "",
     cpa: typeof r.cpa === "number" && Number.isFinite(r.cpa) ? r.cpa : 0,
@@ -307,6 +325,8 @@ export interface MapActions {
     cityId: string,
     dailyData: CityDailyReportData
   ) => SubmitCityReportResult;
+  /** 保证通务司存在（内廷，不参与沙盘） */
+  ensureTongwuSiCity: () => void;
 }
 
 export const useMapStore = create<MapState & MapActions>()(
@@ -316,6 +336,7 @@ export const useMapStore = create<MapState & MapActions>()(
       addCity: (city) => {
         const name = (city.name ?? "").trim();
         if (!name) return false;
+        if (name === TONGWU_SI_DEFAULT_NAME) return false;
         if (get().cities.some((c) => c.name.trim() === name)) return false;
         set((s) => ({
           cities: [
@@ -325,10 +346,13 @@ export const useMapStore = create<MapState & MapActions>()(
         }));
         return true;
       },
-      removeCity: (id) =>
+      removeCity: (id) => {
+        const target = get().cities.find((c) => c.id === id);
+        if (target && isTongwuSiCity(target)) return;
         set((s) => ({
           cities: s.cities.filter((c) => c.id !== id),
-        })),
+        }));
+      },
       updateCity: (id, data) => {
         const prev = get().cities.find((c) => c.id === id);
         let cpaIncrease = 0;
@@ -363,7 +387,9 @@ export const useMapStore = create<MapState & MapActions>()(
         const idSet = new Set(ids.filter((x) => typeof x === "string" && x.length > 0));
         if (idSet.size === 0) return;
         set((s) => ({
-          cities: s.cities.filter((c) => !idSet.has(c.id)),
+          cities: s.cities.filter(
+            (c) => !idSet.has(c.id) || isTongwuSiCity(c)
+          ),
         }));
       },
       bulkAddCities: (names) => {
@@ -607,6 +633,23 @@ export const useMapStore = create<MapState & MapActions>()(
         );
         return { ok: true };
       },
+      ensureTongwuSiCity: () =>
+        set((s) => {
+          const existing = s.cities.find((c) => isTongwuSiCity(c));
+          if (existing) {
+            if (
+              existing.id === TONGWU_SI_CITY_ID &&
+              existing.isTongwuSi === true
+            ) {
+              return s;
+            }
+            const rest = s.cities.filter((c) => !isTongwuSiCity(c));
+            return {
+              cities: [createTongwuSiCityRecord(), ...rest],
+            };
+          }
+          return { cities: [createTongwuSiCityRecord(), ...s.cities] };
+        }),
     }),
     {
       name: "hanling-map",

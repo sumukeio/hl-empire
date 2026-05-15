@@ -2,6 +2,15 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { todayKey } from "@/lib/today-key";
+import {
+  getQuestAffiliation,
+  normalizeQuestAffiliation,
+} from "@/lib/quest-affiliation";
+import {
+  getQuestCategory,
+  normalizeQuestCategory,
+} from "@/lib/quest-category";
+import { isTongwuSiCity } from "@/lib/tongwu-si";
 import { parseBulkQuestText } from "@/lib/parse-bulk-quest-lines";
 import {
   classifyIndustrialSectorFromQuestTitle,
@@ -13,6 +22,8 @@ import { useEventStore } from "./event-store";
 import { useMapStore, getQuestDailyCount } from "./map-store";
 import type {
   Quest,
+  QuestAffiliation,
+  QuestCategory,
   QuestCompensationType,
   QuestOccurrence,
   QuestPatch,
@@ -195,10 +206,20 @@ export function createEmptyQuest(
     Number.isFinite(partial.maxCompletionsPerDay)
       ? Math.max(1, Math.min(99, Math.floor(partial.maxCompletionsPerDay)))
       : maxFromOccurrence(occurrence);
+  const title = partial?.title ?? "新军机";
+  const id = newQuestId();
+  const category: QuestCategory =
+    partial?.category != null
+      ? normalizeQuestCategory(partial.category)
+      : getQuestCategory({ id, title });
+  const affiliation: QuestAffiliation =
+    partial?.affiliation != null
+      ? normalizeQuestAffiliation(partial.affiliation)
+      : getQuestAffiliation({ affiliation: undefined, title });
   return {
-    id: newQuestId(),
+    id,
     period,
-    title: partial?.title ?? "新军机",
+    title,
     completed: false,
     expReward:
       typeof partial?.expReward === "number" && partial.expReward >= 0
@@ -216,6 +237,8 @@ export function createEmptyQuest(
         ? partial.sortOrder
         : 0,
     maxCompletionsPerDay,
+    category,
+    affiliation,
   };
 }
 
@@ -252,10 +275,20 @@ export function migrateQuest(raw: unknown): Quest {
     typeof r.maxCompletionsPerDay === "number" && Number.isFinite(r.maxCompletionsPerDay)
       ? Math.max(1, Math.min(99, Math.floor(r.maxCompletionsPerDay)))
       : maxFromOccurrence(occurrence);
+  const id = typeof r.id === "string" ? r.id : newQuestId();
+  const title = typeof r.title === "string" ? r.title : "未命名任务";
+  const category =
+    r.category !== undefined
+      ? normalizeQuestCategory(r.category)
+      : getQuestCategory({ id, title });
+  const affiliation =
+    r.affiliation !== undefined
+      ? normalizeQuestAffiliation(r.affiliation)
+      : getQuestAffiliation({ affiliation: undefined, title });
   return {
-    id: typeof r.id === "string" ? r.id : newQuestId(),
+    id,
     period: normalizePeriod(r.period),
-    title: typeof r.title === "string" ? r.title : "未命名任务",
+    title,
     completed: r.completed === true,
     expReward:
       typeof r.expReward === "number" && Number.isFinite(r.expReward)
@@ -273,6 +306,8 @@ export function migrateQuest(raw: unknown): Quest {
         ? r.sortOrder
         : 0,
     maxCompletionsPerDay,
+    category,
+    affiliation,
   };
 }
 
@@ -360,18 +395,20 @@ export interface QuestActions {
   syncActiveQuestPauseIfExhausted: () => void;
   resetDailyQuests: () => void;
   /**
-   * 保证「祖宗之法」MVA 政务清单（31 项）存在：
-   * - 无存档 / 空列表 → 写入完整默认表；
-   * - 仍含旧版 bundled id（`quest-default-*`）→ 整表替换；
-   * - 若全部为 `quest-mva-*` 但存在未知 id 或缺省默认 id → 整表替换（换版目录）；
-   * - 否则仅补全缺失 id（不删用户自建非 MVA 条目）。
-   * 换表后会对各城调用 `pruneQuestProgressForUnknownIds`，剔除无效勘合键。
+   * 启动收尾：确保通务司存在，并按当前枢密院任务 id 修剪各城勘合键。
+   * 不再注入固定条数默认清单——以用户枢密院配置为准。
    */
+  ensureQuestBootstrap: () => void;
+  /** @deprecated 请用 `ensureQuestBootstrap` */
   ensureMvaQuestCatalog: () => void;
-  /** 多行文本批量追加政务；返回新增条数与解析错误（行号+说明）。 */
-  bulkAddQuests: (text: string) => BulkAddQuestsResult;
+  /** 多行文本批量追加政务；`affiliation` 由枢密院当前分区决定。 */
+  bulkAddQuests: (
+    text: string,
+    affiliation?: QuestAffiliation
+  ) => BulkAddQuestsResult;
   bulkRemoveQuests: (ids: string[]) => void;
-  setActiveCityId: (id: string | null) => void;
+  /** 点卯计时中禁止切换主攻 */
+  setActiveCityId: (id: string | null) => boolean;
   /** 同一时辰内按给定 id 顺序重排（用于拖动） */
   reorderQuestsInPeriod: (period: QuestPeriod, orderedIds: string[]) => void;
 }
@@ -396,6 +433,8 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             compensationType: quest.compensationType,
             occurrence: quest.occurrence,
             maxCompletionsPerDay: quest.maxCompletionsPerDay,
+            category: quest.category,
+            affiliation: quest.affiliation,
           });
           const inP = s.quests.filter((q) => q.period === period);
           const minSo =
@@ -413,6 +452,14 @@ export const useQuestStore = create<QuestState & QuestActions>()(
               Number.isFinite(quest.maxCompletionsPerDay)
                 ? Math.max(1, Math.min(99, Math.floor(quest.maxCompletionsPerDay)))
                 : blank.maxCompletionsPerDay,
+            category:
+              quest.category != null
+                ? normalizeQuestCategory(quest.category)
+                : blank.category,
+            affiliation:
+              quest.affiliation != null
+                ? normalizeQuestAffiliation(quest.affiliation)
+                : blank.affiliation,
           };
           return { quests: [...s.quests, next] };
         }),
@@ -466,6 +513,9 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             }
             next.occurrence = normalizeOccurrence(next.occurrence);
             next.compensationType = normalizeCompensation(next.compensationType);
+            if (data.category !== undefined) {
+              next.category = normalizeQuestCategory(next.category);
+            }
             return next;
           }),
         })),
@@ -779,51 +829,23 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           );
         }
       },
-      ensureMvaQuestCatalog: () => {
-        const defaults = createDefaultQuests();
-        const validIdSet = defaultMvaQuestIdSet();
-        const snap = get();
-        let { quests } = snap;
-
-        const replaceCatalog = (next: Quest[]) => {
-          const s = get();
-          if (s.activeTimer) {
-            const qq = s.quests.find((x) => x.id === s.activeTimer!.questId);
-            if (qq) useEmperorStore.getState().addStamina(qq.staminaCost);
-          }
-          set({ quests: next, activeTimer: null });
-        };
-
-        if (quests.length === 0) {
-          useMapStore.getState().pruneQuestProgressForUnknownIds(validIdSet);
-          replaceCatalog(defaults);
-          return;
+      ensureQuestBootstrap: () => {
+        useMapStore.getState().ensureTongwuSiCity();
+        const { quests, activeCityId } = get();
+        const cities = useMapStore.getState().cities;
+        if (quests.length > 0) {
+          useMapStore
+            .getState()
+            .pruneQuestProgressForUnknownIds(new Set(quests.map((q) => q.id)));
         }
-        if (quests.some((q) => q.id.startsWith("quest-default-"))) {
-          useMapStore.getState().pruneQuestProgressForUnknownIds(validIdSet);
-          replaceCatalog(defaults);
-          return;
+        if (activeCityId && !cities.some((c) => c.id === activeCityId)) {
+          set({ activeCityId: null });
         }
-        const onlyMva =
-          quests.length > 0 && quests.every((q) => q.id.startsWith("quest-mva-"));
-        if (onlyMva) {
-          const hasOrphan = quests.some((q) => !validIdSet.has(q.id));
-          const missingSome = defaults.some((d) => !quests.some((q) => q.id === d.id));
-          if (hasOrphan || missingSome) {
-            useMapStore.getState().pruneQuestProgressForUnknownIds(validIdSet);
-            replaceCatalog(defaults);
-            return;
-          }
-        }
-        const missing = defaults.filter((d) => !quests.some((q) => q.id === d.id));
-        if (missing.length === 0) return;
-        const merged = [...quests, ...missing];
-        useMapStore
-          .getState()
-          .pruneQuestProgressForUnknownIds(new Set(merged.map((q) => q.id)));
-        set({ quests: merged });
       },
-      bulkAddQuests: (text) => {
+      ensureMvaQuestCatalog: () => {
+        get().ensureQuestBootstrap();
+      },
+      bulkAddQuests: (text, affiliation = "city") => {
         const { items, errors } = parseBulkQuestText(text);
         const s = get();
         const n = items.length;
@@ -849,6 +871,11 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             occurrence: d.occurrence ?? "daily_once",
             sortOrder,
             maxCompletionsPerDay: maxFromOccurrence(d.occurrence ?? "daily_once"),
+            category: getQuestCategory({
+              id: `quest-bulk-${period}-${sortOrder}`,
+              title: d.title,
+            }),
+            affiliation: normalizeQuestAffiliation(affiliation),
           };
           mutable.push(q);
           newQuests.push(q);
@@ -873,12 +900,11 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         }));
       },
       setActiveCityId: (id) => {
-        const t = get().activeTimer;
-        if (t) {
-          const q = get().quests.find((x) => x.id === t.questId);
-          if (q) useEmperorStore.getState().addStamina(q.staminaCost);
-        }
-        set({ activeCityId: id, activeTimer: null });
+        if (get().activeTimer) return false;
+        const cities = useMapStore.getState().cities;
+        if (id != null && !cities.some((c) => c.id === id)) return false;
+        set({ activeCityId: id });
+        return true;
       },
       reorderQuestsInPeriod: (period, orderedIds) =>
         set((s) => {

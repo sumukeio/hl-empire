@@ -8,6 +8,20 @@ export {
   isQuestFullyCompletedToday,
   pruneCityQuestProgress,
 } from "./map-store";
+export {
+  TONGWU_SI_CITY_ID,
+  TONGWU_SI_DEFAULT_NAME,
+  createTongwuSiCityRecord,
+  getTerritoryCities,
+  isTongwuSiCity,
+} from "@/lib/tongwu-si";
+export {
+  filterQuestsByAffiliation,
+  filterQuestsForActiveCity,
+  getQuestAffiliation,
+  normalizeQuestAffiliation,
+  questAffiliationLabel,
+} from "@/lib/quest-affiliation";
 export type { BulkAddCitiesResult, TourCityResult } from "./map-store";
 export {
   useQuestStore,
@@ -41,6 +55,8 @@ export type {
   DailyBattleReportInput,
   PersonalExpenseCategory,
   Quest,
+  QuestAffiliation,
+  QuestCategory,
   QuestCompensationType,
   QuestOccurrence,
   QuestPatch,
@@ -51,3 +67,13 @@ export type {
   SubmitCityReportResult,
   SubmitDailyReportResult,
 } from "./types";
+export {
+  filterQuestsByCategory,
+  getQuestCategory,
+  questCategoryBadgeClass,
+  questCategoryDotClass,
+  questCategoryLabel,
+  QUEST_CATEGORIES,
+  QUEST_CATEGORY_FILTER_OPTIONS,
+} from "@/lib/quest-category";
+export type { QuestCategoryFilter } from "@/lib/quest-category";

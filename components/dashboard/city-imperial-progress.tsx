@@ -17,6 +17,8 @@ import {
   questsForImperialAxis,
   type ImperialAxis,
 } from "@/lib/quest-imperial-axis";
+import { getQuestAffiliation } from "@/lib/quest-affiliation";
+import { isTongwuSiCity } from "@/lib/tongwu-si";
 import {
   getQuestDailyCount,
   isQuestFullyCompletedToday,
@@ -48,12 +50,19 @@ export function CityImperialProgress({
   className,
 }: CityImperialProgressProps) {
   const [openAxis, setOpenAxis] = useState<ImperialAxis | null>(null);
+  const cityQuests = useMemo(
+    () =>
+      isTongwuSiCity(city)
+        ? []
+        : quests.filter((q) => getQuestAffiliation(q) === "city"),
+    [quests, city]
+  );
   const slices = useMemo(
     () =>
-      computeImperialAxisProgress(quests, (q) =>
+      computeImperialAxisProgress(cityQuests, (q) =>
         isQuestFullyCompletedToday(city, q)
       ),
-    [quests, city]
+    [cityQuests, city]
   );
   const tone = cityStatusProgressTone(statusTone);
 
@@ -168,7 +177,7 @@ export function CityImperialProgress({
       </div>
       <ul className="space-y-2">
         {slices.map((row) => {
-          const axisQuests = questsForImperialAxis(quests, row.axis);
+          const axisQuests = questsForImperialAxis(cityQuests, row.axis);
           const expanded = openAxis === row.axis;
           return (
             <li key={row.axis}>
@@ -240,7 +249,7 @@ export function CityImperialProgress({
           );
         })}
       </ul>
-      {quests.length === 0 ? (
+      {cityQuests.length === 0 ? (
         <p className="mt-2 text-center text-[10px] text-slate-500">
           枢密院尚无政务条目，无法统计建设度。
         </p>

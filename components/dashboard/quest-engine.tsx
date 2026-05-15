@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,16 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Sparkles } from "lucide-react";
 import { buildCourtDispatchDecree } from "@/lib/court-dispatch-log";
+import {
+  filterQuestsByCategory,
+  getQuestCategory,
+  QUEST_CATEGORY_FILTER_OPTIONS,
+  questCategoryDotClass,
+  questCategoryLabel,
+  type QuestCategoryFilter,
+} from "@/lib/quest-category";
+import { filterQuestsForActiveCity } from "@/lib/quest-affiliation";
+import { isTongwuSiCity } from "@/lib/tongwu-si";
 import { useIsLgScreen } from "@/lib/use-is-lg";
 import { cn } from "@/lib/utils";
 import {
@@ -138,18 +148,29 @@ export function QuestEngine({
   const [cityDrawerOpen, setCityDrawerOpen] = useState(false);
   const [citySearch, setCitySearch] = useState("");
   const [sopTarget, setSopTarget] = useState<Quest | null>(null);
+  const [categoryFilter, setCategoryFilter] =
+    useState<QuestCategoryFilter>("all");
   const isLg = useIsLgScreen();
 
   const activeCity = useMemo(
     () => cities.find((c) => c.id === activeCityId) ?? null,
     [cities, activeCityId]
   );
+  const activeIsTongwu = activeCity != null && isTongwuSiCity(activeCity);
+
+  const trySetActiveCity = useCallback(
+    (id: string | null) => {
+      if (activeTimer) return false;
+      return setActiveCityId(id);
+    },
+    [activeTimer, setActiveCityId]
+  );
 
   useEffect(() => {
     if (activeCityId && !cities.some((c) => c.id === activeCityId)) {
-      setActiveCityId(null);
+      if (!activeTimer) setActiveCityId(null);
     }
-  }, [activeCityId, cities, setActiveCityId]);
+  }, [activeCityId, cities, setActiveCityId, activeTimer]);
 
   useEffect(() => {
     const id = window.setInterval(() => setClock(new Date()), 30_000);
@@ -170,27 +191,57 @@ export function QuestEngine({
     if (!cityDrawerOpen) setCitySearch("");
   }, [cityDrawerOpen]);
 
-  const filteredCities = useMemo(
-    () => cities.filter((c) => cityMatchesSearch(c, citySearch)),
-    [cities, citySearch]
+  const tongwuCity = useMemo(
+    () => cities.find((c) => isTongwuSiCity(c)) ?? null,
+    [cities]
+  );
+  const territoryCities = useMemo(
+    () => cities.filter((c) => !isTongwuSiCity(c)),
+    [cities]
   );
 
-  /** 列表展示：筛选结果；若当前主攻城被筛掉，仍置顶保留一条以免 Select 失配 */
+  const filteredTongwu = useMemo(() => {
+    if (!tongwuCity) return [];
+    return cityMatchesSearch(tongwuCity, citySearch) ? [tongwuCity] : [];
+  }, [tongwuCity, citySearch]);
+
+  const filteredTerritory = useMemo(
+    () => territoryCities.filter((c) => cityMatchesSearch(c, citySearch)),
+    [territoryCities, citySearch]
+  );
+
+  /** 通务司置顶，其下为征战目标；当前主攻被筛掉时仍保留以免失配 */
   const citiesForPicker = useMemo(() => {
-    if (!activeCity || filteredCities.some((c) => c.id === activeCity.id)) {
-      return filteredCities;
+    const base = [...filteredTongwu, ...filteredTerritory];
+    if (!activeCity || base.some((c) => c.id === activeCity.id)) {
+      return base;
     }
-    return [activeCity, ...filteredCities];
-  }, [activeCity, filteredCities]);
+    return [activeCity, ...base];
+  }, [activeCity, filteredTongwu, filteredTerritory]);
+
+  const questsForAffiliation = useMemo(
+    () => filterQuestsForActiveCity(quests, activeCityId, cities),
+    [quests, activeCityId, cities]
+  );
 
   const curfew = isCurfewMode(health);
   const protocolLock = !isDressed;
   const questDisabled = curfew || protocolLock || !activeCity;
 
+  const questsForCategory = useMemo(
+    () => filterQuestsByCategory(questsForAffiliation, categoryFilter),
+    [questsForAffiliation, categoryFilter]
+  );
+
+  const categoryFilterEmpty =
+    categoryFilter !== "all" &&
+    questsForAffiliation.length > 0 &&
+    questsForCategory.length === 0;
+
   const byPeriod = useMemo(() => {
     const map = new Map<QuestPeriod, Quest[]>();
     for (const p of PERIODS) map.set(p, []);
-    for (const q of quests) {
+    for (const q of questsForCategory) {
       const bucket = map.get(q.period);
       if (bucket) bucket.push(q);
     }
@@ -204,7 +255,7 @@ export function QuestEngine({
       });
     }
     return map;
-  }, [quests]);
+  }, [questsForCategory]);
 
   const periodsToShow = useMemo(
     () => PERIODS.filter((p) => (byPeriod.get(p)?.length ?? 0) > 0),
@@ -213,12 +264,12 @@ export function QuestEngine({
 
   const absolutePendingCount = useMemo(() => {
     if (!activeCity) return 0;
-    return quests.filter(
+    return questsForAffiliation.filter(
       (q) =>
         q.compensationType === "absolute" &&
         !isQuestFullyCompletedToday(activeCity, q)
     ).length;
-  }, [quests, activeCity]);
+  }, [questsForAffiliation, activeCity]);
 
   const isRowActionBlocked = (q: Quest) =>
     questDisabled || isEarlyCourtTaskBlocked(stamina, q.period, clock);
@@ -347,8 +398,9 @@ export function QuestEngine({
   };
 
   const cityTriggerLabel = !activeCity
-    ? "选择主攻城池"
+    ? "选择主攻"
     : `${activeCity.name}${activeCity.alias?.trim() ? ` · ${activeCity.alias.trim()}` : ""}`;
+  const cityPickerDisabled = Boolean(activeTimer);
 
   const cityPickerListScrollClass =
     "min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 py-2 [-webkit-overflow-scrolling:touch]";
@@ -356,21 +408,22 @@ export function QuestEngine({
   const taskList = (
     <div className="space-y-1 py-3 pr-3">
       <div className="mx-2 mb-3 space-y-2 rounded-lg border border-imperial-gold/20 bg-slate-950/50 px-3 py-2.5">
-        <Label className="text-[11px] font-medium text-imperial-gold">主攻城池</Label>
+        <Label className="text-[11px] font-medium text-imperial-gold">主攻</Label>
         {isLg ? (
           <div className="space-y-1.5">
             <p className="text-[10px] leading-snug text-muted-foreground">
-              展开下方列表后，在列表顶部搜索城名或别名；未展开时输入也会在下拉打开后生效。
+              通务司置顶；其下为征战目标。点卯计时中不可切换主攻。
             </p>
             <Select
               value={activeCityId ?? NONE_CITY}
+              disabled={cityPickerDisabled}
               onValueChange={(v) => {
-                setActiveCityId(v === NONE_CITY ? null : v);
+                if (!trySetActiveCity(v === NONE_CITY ? null : v)) return;
                 setCitySearch("");
               }}
             >
               <SelectTrigger className="h-11 min-h-[44px] border-imperial-gold/25 bg-slate-900/80 text-sm text-slate-100">
-                <SelectValue placeholder="选择城池" />
+                <SelectValue placeholder="选择通务司或征战目标" />
               </SelectTrigger>
               <SelectContent className="max-h-[min(50vh,22rem)] border-imperial-gold/20 bg-slate-950 p-0 text-slate-100">
                 <div
@@ -389,7 +442,7 @@ export function QuestEngine({
                   <p className="mt-1.5 text-[10px] text-muted-foreground">
                     已匹配 {citiesForPicker.length} 座
                     {activeCity &&
-                    !filteredCities.some((c) => c.id === activeCity.id) &&
+                    !citiesForPicker.some((c) => c.id === activeCity.id) &&
                     citySearch.trim()
                       ? "（含当前主攻）"
                       : ""}
@@ -409,6 +462,7 @@ export function QuestEngine({
                 ) : (
                   citiesForPicker.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
+                      {isTongwuSiCity(c) ? "〔通务〕 " : ""}
                       {c.name}
                       {c.alias?.trim() ? ` · ${c.alias.trim()}` : ""}
                     </SelectItem>
@@ -423,10 +477,11 @@ export function QuestEngine({
               type="button"
               variant="outline"
               className="h-11 min-h-[44px] w-full justify-between border-imperial-gold/25 bg-slate-900/80 px-3 text-left text-sm text-slate-100 hover:bg-slate-900"
+              disabled={cityPickerDisabled}
               onClick={() => setCityDrawerOpen(true)}
             >
               <span className="truncate">{cityTriggerLabel}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">选城</span>
+              <span className="shrink-0 text-xs text-muted-foreground">选主攻</span>
             </Button>
             <Sheet open={cityDrawerOpen} onOpenChange={setCityDrawerOpen}>
               <SheetContent
@@ -434,7 +489,7 @@ export function QuestEngine({
                 className="flex max-h-[min(70dvh,28rem)] flex-col gap-0 rounded-t-xl border-t border-imperial-gold/25 p-0"
               >
                 <SheetHeader className="shrink-0 space-y-3 border-b border-border px-4 py-3 text-left">
-                  <SheetTitle className="text-base text-primary">选择主攻城池</SheetTitle>
+                  <SheetTitle className="text-base text-primary">选择主攻</SheetTitle>
                   <Input
                     type="search"
                     value={citySearch}
@@ -445,7 +500,8 @@ export function QuestEngine({
                     autoFocus
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    已匹配 {filteredCities.length} 座
+                    已匹配 {citiesForPicker.length} 项
+                    {cityPickerDisabled ? " · 点卯中不可换主攻" : ""}
                   </p>
                 </SheetHeader>
                 <div className={cityPickerListScrollClass}>
@@ -454,35 +510,42 @@ export function QuestEngine({
                       type="button"
                       variant={!activeCityId ? "secondary" : "ghost"}
                       className="h-12 min-h-[48px] w-full justify-start text-left text-muted-foreground"
+                      disabled={cityPickerDisabled}
                       onClick={() => {
-                        setActiveCityId(null);
+                        if (!trySetActiveCity(null)) return;
                         setCityDrawerOpen(false);
                       }}
                     >
                       （未选定）
                     </Button>
-                    {filteredCities.length === 0 ? (
+                    {citiesForPicker.length === 0 ? (
                       <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                        无匹配城池，请调整关键词
+                        无匹配项，请调整关键词
                       </p>
                     ) : null}
-                    {filteredCities.map((c) => {
+                    {citiesForPicker.map((c) => {
                       const selected = c.id === activeCityId;
+                      const tongwu = isTongwuSiCity(c);
                       return (
                         <Button
                           key={c.id}
                           type="button"
                           variant={selected ? "secondary" : "ghost"}
+                          disabled={cityPickerDisabled}
                           className={cn(
                             "h-auto min-h-[48px] w-full flex-col items-start justify-center gap-0.5 py-2 text-left",
-                            selected && "border border-imperial-gold/40 bg-imperial-gold/10"
+                            selected && "border border-imperial-gold/40 bg-imperial-gold/10",
+                            tongwu && !selected && "border border-sky-500/20"
                           )}
                           onClick={() => {
-                            setActiveCityId(c.id);
+                            if (!trySetActiveCity(c.id)) return;
                             setCityDrawerOpen(false);
                           }}
                         >
-                          <span className="font-medium text-foreground">{c.name}</span>
+                          <span className="font-medium text-foreground">
+                            {tongwu ? "〔通务〕 " : ""}
+                            {c.name}
+                          </span>
                           {c.alias?.trim() ? (
                             <span className="text-xs text-muted-foreground">{c.alias.trim()}</span>
                           ) : null}
@@ -495,16 +558,73 @@ export function QuestEngine({
             </Sheet>
           </>
         )}
-        {!activeCity && cities.length > 0 ? (
+        {cityPickerDisabled ? (
           <p className="text-[11px] leading-snug text-amber-200/90">
-            请先选定主攻城池，方可勘合本城军机。
+            点卯计时中，须先呈报或撤点卯后方可切换主攻。
           </p>
         ) : null}
-        {cities.length === 0 ? (
+        {!activeCity && cities.length > 0 ? (
+          <p className="text-[11px] leading-snug text-amber-200/90">
+            请先选定通务司或征战目标，方可点卯勘合。
+          </p>
+        ) : null}
+        {activeCity && activeIsTongwu ? (
+          <p className="text-[11px] leading-snug text-sky-200/85">
+            天下通务：仅显示枢密院「天下通务」分区中的条目。
+          </p>
+        ) : activeCity ? (
+          <p className="text-[11px] leading-snug text-slate-400">
+            分城政务：仅显示枢密院「分城政务」分区中的条目。
+          </p>
+        ) : null}
+        {territoryCities.length === 0 && !tongwuCity ? (
           <p className="text-[11px] text-slate-500">
             图志暂无征战目标，请至造办处图志司扩建。
           </p>
         ) : null}
+      </div>
+
+      <div
+        className="mx-2 mb-2 space-y-1.5"
+        role="group"
+        aria-label="业务维度筛选"
+      >
+        <Label className="text-[10px] font-medium text-muted-foreground">
+          业务维度
+        </Label>
+        <div className="flex flex-wrap gap-1.5">
+          {QUEST_CATEGORY_FILTER_OPTIONS.map((opt) => {
+            const selected = categoryFilter === opt.id;
+            const catClass =
+              opt.id !== "all"
+                ? questCategoryDotClass(opt.id)
+                : "bg-imperial-gold";
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setCategoryFilter(opt.id)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors",
+                  selected
+                    ? opt.id === "all"
+                      ? "border-imperial-gold/50 bg-imperial-gold/15 text-imperial-gold"
+                      : "border-border/70 bg-slate-900/90 text-slate-100"
+                    : "border-border/60 bg-transparent text-muted-foreground hover:border-imperial-gold/30 hover:bg-muted/30"
+                )}
+                aria-pressed={selected}
+              >
+                {opt.id !== "all" ? (
+                  <span
+                    className={cn("h-1.5 w-1.5 shrink-0 rounded-full", catClass)}
+                    aria-hidden
+                  />
+                ) : null}
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {curfew ? (
@@ -514,13 +634,19 @@ export function QuestEngine({
             前往养心殿（睡觉）
           </Button>
         </div>
-      ) : quests.length === 0 ? (
-        <p className="px-3 py-8 text-center text-xs leading-relaxed text-muted-foreground">
-          暂无军机任务。请点击顶部「造办处」齿轮 → 枢密院 → 新增任务。
-        </p>
       ) : !activeCity ? (
         <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
-          点卯前请先于上方选择主攻城池。
+          点卯前请先于上方选择通务司或征战目标。
+        </p>
+      ) : questsForAffiliation.length === 0 ? (
+        <p className="px-3 py-8 text-center text-xs leading-relaxed text-muted-foreground">
+          {activeIsTongwu
+            ? "通务司暂无政务。请至造办处 → 枢密院 →「天下通务」新增。"
+            : "本城暂无分城政务。请至造办处 → 枢密院 →「分城政务」新增。"}
+        </p>
+      ) : categoryFilterEmpty ? (
+        <p className="px-3 py-8 text-center text-xs leading-relaxed text-muted-foreground">
+          该领域暂无政务，请前往枢密院对应分区配置。
         </p>
       ) : (
         periodsToShow.map((period) => {
@@ -630,12 +756,27 @@ export function QuestEngine({
                           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-snug">
                             <span
                               className={cn(
-                                "font-medium text-foreground",
-                                doneFull &&
-                                  "text-muted-foreground line-through decoration-muted-foreground/80"
+                                "inline-flex shrink-0 items-center gap-1.5",
+                                doneFull && "opacity-70"
                               )}
                             >
-                              {q.title}
+                              <span
+                                className={cn(
+                                  "h-1.5 w-1.5 rounded-full",
+                                  questCategoryDotClass(getQuestCategory(q))
+                                )}
+                                title={questCategoryLabel(getQuestCategory(q))}
+                                aria-hidden
+                              />
+                              <span
+                                className={cn(
+                                  "font-medium text-foreground",
+                                  doneFull &&
+                                    "text-muted-foreground line-through decoration-muted-foreground/80"
+                                )}
+                              >
+                                {q.title}
+                              </span>
                             </span>
                             <span className="text-[10px] font-medium uppercase tracking-wide text-imperial-gold/90">
                               {doneFull

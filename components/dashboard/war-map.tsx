@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isCityEquipmentCritical } from "@/lib/city-military";
+import { getTerritoryCities } from "@/lib/tongwu-si";
 import { cn } from "@/lib/utils";
 import {
   CITY_STATUS_LABELS,
@@ -65,6 +66,7 @@ export function WarMap({
   showPajamaOverlay = false,
 }: WarMapProps) {
   const cities = useMapStore((s) => s.cities);
+  const territoryCities = useMemo(() => getTerritoryCities(cities), [cities]);
   const updateCity = useMapStore((s) => s.updateCity);
   const tourCityAction = useMapStore((s) => s.tourCity);
   const submitCityReport = useMapStore((s) => s.submitCityReport);
@@ -108,18 +110,18 @@ export function WarMap({
   }, [statusFilter]);
 
   const visibleCities = useMemo(() => {
-    if (!effectiveStatusFilter) return cities;
-    return cities.filter((c) => effectiveStatusFilter.has(c.status));
-  }, [cities, effectiveStatusFilter]);
+    if (!effectiveStatusFilter) return territoryCities;
+    return territoryCities.filter((c) => effectiveStatusFilter.has(c.status));
+  }, [territoryCities, effectiveStatusFilter]);
 
   const statusCounts = useMemo(() => {
     const m = new Map<CityStatus, number>();
     for (const st of STATUS_ORDER) m.set(st, 0);
-    for (const c of cities) {
+    for (const c of territoryCities) {
       m.set(c.status, (m.get(c.status) ?? 0) + 1);
     }
     return m;
-  }, [cities]);
+  }, [territoryCities]);
 
   useEffect(() => {
     if (!active) return;

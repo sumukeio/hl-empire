@@ -38,7 +38,7 @@ function getSupabaseOrNull() {
 
 function runPostHydrateCatalog(): void {
   useQuestStore.getState().resetDailyQuests();
-  useQuestStore.getState().ensureMvaQuestCatalog();
+  useQuestStore.getState().ensureQuestBootstrap();
 }
 
 export function EmpireCloudSync() {

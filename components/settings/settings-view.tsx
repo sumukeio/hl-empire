@@ -32,6 +32,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { parseBulkCityNamesFromText } from "@/lib/parse-bulk-city-names";
+import {
+  filterQuestsByAffiliation,
+  getQuestAffiliation,
+  questAffiliationLabel,
+} from "@/lib/quest-affiliation";
+import {
+  getQuestCategory,
+  questCategoryLabel,
+  QUEST_CATEGORIES,
+} from "@/lib/quest-category";
+import { getTerritoryCities } from "@/lib/tongwu-si";
 import { EmpireArchivePanel } from "@/components/settings/empire-archive-panel";
 import {
   createEmptyCity,
@@ -45,6 +56,8 @@ import type {
   CityPatch,
   EventLogType,
   Quest,
+  QuestAffiliation,
+  QuestCategory,
   QuestCompensationType,
   QuestOccurrence,
   QuestPatch,
@@ -59,6 +72,7 @@ const field =
 export function SettingsView() {
   const router = useRouter();
   const cities = useMapStore((s) => s.cities);
+  const territoryCities = useMemo(() => getTerritoryCities(cities), [cities]);
   const addCity = useMapStore((s) => s.addCity);
   const bulkAddCities = useMapStore((s) => s.bulkAddCities);
   const bulkRemoveCities = useMapStore((s) => s.bulkRemoveCities);
@@ -70,10 +84,15 @@ export function SettingsView() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   useEffect(() => {
+    useMapStore.getState().ensureTongwuSiCity();
+    useQuestStore.getState().ensureQuestBootstrap();
+  }, []);
+
+  useEffect(() => {
     setSelectedCityIds((prev) =>
-      prev.filter((id) => cities.some((c) => c.id === id))
+      prev.filter((id) => territoryCities.some((c) => c.id === id))
     );
-  }, [cities]);
+  }, [territoryCities]);
 
   const quests = useQuestStore((s) => s.quests);
   const addQuest = useQuestStore((s) => s.addQuest);
@@ -84,6 +103,8 @@ export function SettingsView() {
   const reorderQuestsInPeriod = useQuestStore((s) => s.reorderQuestsInPeriod);
   const addLog = useEventStore((s) => s.addLog);
 
+  const [councilAffiliation, setCouncilAffiliation] =
+    useState<QuestAffiliation>("city");
   const [questBulkText, setQuestBulkText] = useState("");
   const [selectedQuestIds, setSelectedQuestIds] = useState<string[]>([]);
   const [questBulkDeleteOpen, setQuestBulkDeleteOpen] = useState(false);
@@ -96,9 +117,14 @@ export function SettingsView() {
     );
   }, [quests]);
 
-  const sortedQuests = useMemo(() => {
+  const councilQuests = useMemo(
+    () => filterQuestsByAffiliation(quests, councilAffiliation),
+    [quests, councilAffiliation]
+  );
+
+  const sortedCouncilQuests = useMemo(() => {
     const order = new Map(PERIODS.map((p, i) => [p, i]));
-    return [...quests].sort((a, b) => {
+    return [...councilQuests].sort((a, b) => {
       const da = (order.get(a.period) ?? 99) - (order.get(b.period) ?? 99);
       if (da !== 0) return da;
       const oa = a.sortOrder ?? 0;
@@ -106,7 +132,7 @@ export function SettingsView() {
       if (oa !== ob) return oa - ob;
       return a.id.localeCompare(b.id);
     });
-  }, [quests]);
+  }, [councilQuests]);
 
   const [dragQuestId, setDragQuestId] = useState<string | null>(null);
 
@@ -128,10 +154,10 @@ export function SettingsView() {
       const dragId = raw || dragQuestId;
       setDragQuestId(null);
       if (!dragId || dragId === targetId) return;
-      const qDrag = quests.find((q) => q.id === dragId);
-      const qTar = quests.find((q) => q.id === targetId);
+      const qDrag = councilQuests.find((q) => q.id === dragId);
+      const qTar = councilQuests.find((q) => q.id === targetId);
       if (!qDrag || !qTar || qDrag.period !== period || qTar.period !== period) return;
-      const inPeriod = sortedQuests.filter((q) => q.period === period);
+      const inPeriod = sortedCouncilQuests.filter((q) => q.period === period);
       const ordered = inPeriod.map((q) => q.id);
       const from = ordered.indexOf(dragId);
       const to = ordered.indexOf(targetId);
@@ -141,7 +167,7 @@ export function SettingsView() {
       next.splice(to, 0, dragId);
       reorderQuestsInPeriod(period, next);
     },
-    [dragQuestId, quests, sortedQuests, reorderQuestsInPeriod]
+    [dragQuestId, councilQuests, sortedCouncilQuests, reorderQuestsInPeriod]
   );
 
   const handleQuestDragEnd = useCallback(() => {
@@ -149,9 +175,10 @@ export function SettingsView() {
   }, []);
 
   const allQuestsSelected =
-    quests.length > 0 && selectedQuestIds.length === quests.length;
+    councilQuests.length > 0 &&
+    councilQuests.every((q) => selectedQuestIds.includes(q.id));
   const someQuestsSelected =
-    selectedQuestIds.length > 0 && selectedQuestIds.length < quests.length;
+    selectedQuestIds.length > 0 && !allQuestsSelected;
 
   const onBulkExpand = () => {
     const names = parseBulkCityNamesFromText(bulkInput);
@@ -199,9 +226,10 @@ export function SettingsView() {
   };
 
   const allCitiesSelected =
-    cities.length > 0 && selectedCityIds.length === cities.length;
+    territoryCities.length > 0 &&
+    selectedCityIds.length === territoryCities.length;
   const someCitiesSelected =
-    selectedCityIds.length > 0 && selectedCityIds.length < cities.length;
+    selectedCityIds.length > 0 && selectedCityIds.length < territoryCities.length;
 
   const onRemoveCity = (city: City) => {
     if (
@@ -215,13 +243,20 @@ export function SettingsView() {
   };
 
   const onAddQuest = () => {
-    const q = createEmptyQuest({ period: "早朝", title: "新政务" });
+    const q = createEmptyQuest({
+      period: "早朝",
+      title: councilAffiliation === "tongwu" ? "【通务】新政务" : "新政务",
+      affiliation: councilAffiliation,
+    });
     addQuest(q);
-    addLog(`枢密院：已新增【${q.period}】政务条目《${q.title}》`, "decree");
+    addLog(
+      `枢密院（${questAffiliationLabel(councilAffiliation)}）：已新增【${q.period}】政务《${q.title}》`,
+      "decree"
+    );
   };
 
   const onQuestBulkImport = () => {
-    const { added, errors } = bulkAddQuests(questBulkText);
+    const { added, errors } = bulkAddQuests(questBulkText, councilAffiliation);
     const errText = errors
       .map((e) => `第 ${e.line} 行：${e.message}`)
       .join("\n");
@@ -399,7 +434,7 @@ export function SettingsView() {
 
               <ScrollArea className="h-[min(60vh,520px)] rounded-lg border border-slate-800/90 pr-3">
                 <div className="space-y-0 p-2">
-                  {cities.length === 0 ? (
+                  {territoryCities.length === 0 ? (
                     <p className="py-12 text-center text-sm text-slate-500">
                       暂无城池。点击「新增城池」以扩充征战目标。
                     </p>
@@ -408,7 +443,7 @@ export function SettingsView() {
                       <div className="mb-3 flex items-center gap-2 border-b border-slate-800/80 pb-2">
                         <Checkbox
                           id="select-all-cities"
-                          disabled={cities.length === 0}
+                          disabled={territoryCities.length === 0}
                           checked={
                             allCitiesSelected
                               ? true
@@ -418,7 +453,7 @@ export function SettingsView() {
                           }
                           onCheckedChange={(v) => {
                             if (v === true) {
-                              setSelectedCityIds(cities.map((c) => c.id));
+                              setSelectedCityIds(territoryCities.map((c) => c.id));
                             } else if (v === false) {
                               setSelectedCityIds([]);
                             }
@@ -432,7 +467,7 @@ export function SettingsView() {
                           全选
                         </Label>
                       </div>
-                      {cities.map((city) => (
+                      {territoryCities.map((city) => (
                         <CityRow
                           key={city.id}
                           city={city}
@@ -466,7 +501,7 @@ export function SettingsView() {
                     政务配置
                   </h2>
                   <p className="text-xs text-slate-500">
-                    紧凑列表；支持批量下发大纲与批量除名
+                    分城政务随征战目标主攻；天下通务仅在通务司主攻下点卯
                   </p>
                 </div>
                 <Button
@@ -479,6 +514,36 @@ export function SettingsView() {
                   新增政务
                 </Button>
               </div>
+
+              <Tabs
+                value={councilAffiliation}
+                onValueChange={(v) => {
+                  setCouncilAffiliation(v as QuestAffiliation);
+                  setSelectedQuestIds([]);
+                }}
+                className="mb-4"
+              >
+                <TabsList className="h-auto w-full justify-start gap-1 bg-slate-950/60 p-1 sm:w-auto">
+                  <TabsTrigger
+                    value="city"
+                    className="data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
+                  >
+                    分城政务
+                    <span className="ml-1.5 tabular-nums text-[10px] text-slate-500">
+                      {filterQuestsByAffiliation(quests, "city").length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="tongwu"
+                    className="data-[state=active]:bg-sky-500/15 data-[state=active]:text-sky-200"
+                  >
+                    天下通务
+                    <span className="ml-1.5 tabular-nums text-[10px] text-slate-500">
+                      {filterQuestsByAffiliation(quests, "tongwu").length}
+                    </span>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
 
               <div className="mb-4 space-y-2 rounded-lg border border-imperial-gold/30 bg-slate-950/35 p-3 sm:p-4">
                 <Label
@@ -518,7 +583,11 @@ export function SettingsView() {
                       ta.selectionStart = ta.selectionEnd = start + 1;
                     });
                   }}
-                  placeholder="【户部】查阅国库|早朝|10|5|2|可补办|每日一次"
+                  placeholder={
+                    councilAffiliation === "tongwu"
+                      ? "【通务】收集小红书素材|晌午|8|5|15|可补办|每日一次"
+                      : "【户部】查阅国库|早朝|10|5|2|可补办|每日一次"
+                  }
                   rows={4}
                   className={cn(
                     "min-h-[6rem] resize-y border-slate-800 bg-slate-950/80 text-sm text-slate-100 placeholder:text-slate-600",
@@ -539,7 +608,7 @@ export function SettingsView() {
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="select-all-quests"
-                    disabled={quests.length === 0}
+                    disabled={councilQuests.length === 0}
                     checked={
                       allQuestsSelected
                         ? true
@@ -549,7 +618,7 @@ export function SettingsView() {
                     }
                     onCheckedChange={(v) => {
                       if (v === true) {
-                        setSelectedQuestIds(quests.map((q) => q.id));
+                        setSelectedQuestIds(councilQuests.map((q) => q.id));
                       } else if (v === false) {
                         setSelectedQuestIds([]);
                       }
@@ -598,12 +667,14 @@ export function SettingsView() {
               </p>
               <ScrollArea className="h-[min(60vh,480px)] rounded-lg border border-slate-800/90 pr-2">
                 <div className="min-w-0 p-1">
-                  {quests.length === 0 ? (
+                  {councilQuests.length === 0 ? (
                     <p className="py-10 text-center text-sm text-slate-500">
-                      暂无政务。可点击「新增政务」或使用上方批量导入。
+                      {councilAffiliation === "tongwu"
+                        ? "暂无天下通务。可在此 Tab 新增或使用上方批量导入。"
+                        : "暂无分城政务。可在此 Tab 新增或使用上方批量导入。"}
                     </p>
                   ) : (
-                    sortedQuests.map((q) => (
+                    sortedCouncilQuests.map((q) => (
                       <CompactQuestRow
                         key={q.id}
                         quest={q}
@@ -959,6 +1030,24 @@ function CompactQuestRow({
     );
   };
 
+  const onCategoryChange = (v: QuestCategory) => {
+    if (v === getQuestCategory(quest)) return;
+    updateQuest(quest.id, { category: v });
+    addLog(
+      `枢密院：已调整《${quest.title}》业务维度为「${questCategoryLabel(v)}」`,
+      "decree"
+    );
+  };
+
+  const onAffiliationChange = (v: QuestAffiliation) => {
+    if (v === getQuestAffiliation(quest)) return;
+    updateQuest(quest.id, { affiliation: v });
+    addLog(
+      `枢密院：已调整《${quest.title}》归属为「${questAffiliationLabel(v)}」`,
+      "decree"
+    );
+  };
+
   const logNumericChange = (label: "功勋" | "体力") => {
     const latest = useQuestStore
       .getState()
@@ -1175,7 +1264,40 @@ function CompactQuestRow({
       </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-1 gap-2 border-l-2 border-imperial-gold/25 pl-2 sm:ml-6 sm:grid-cols-3 sm:gap-3 sm:pl-3">
+      <div className="mt-2 grid grid-cols-1 gap-2 border-l-2 border-imperial-gold/25 pl-2 sm:ml-6 sm:grid-cols-2 sm:gap-3 sm:pl-3 lg:grid-cols-5">
+        <div className="min-w-0 space-y-1">
+          <Label className="text-[10px] text-slate-500">归属</Label>
+          <Select
+            value={getQuestAffiliation(quest)}
+            onValueChange={(v) => onAffiliationChange(v as QuestAffiliation)}
+          >
+            <SelectTrigger className={cn("h-8 w-full text-xs", cell)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border-slate-800 bg-slate-950 text-slate-100">
+              <SelectItem value="city">分城政务</SelectItem>
+              <SelectItem value="tongwu">天下通务</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0 space-y-1">
+          <Label className="text-[10px] text-slate-500">业务维度</Label>
+          <Select
+            value={getQuestCategory(quest)}
+            onValueChange={(v) => onCategoryChange(v as QuestCategory)}
+          >
+            <SelectTrigger className={cn("h-8 w-full text-xs", cell)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border-slate-800 bg-slate-950 text-slate-100">
+              {QUEST_CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {questCategoryLabel(c)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="min-w-0 space-y-1">
           <Label className="text-[10px] text-slate-500">最短耗时（分钟）</Label>
           <Input

@@ -2,6 +2,8 @@ export type CityStatus = 0 | 1 | 2 | 3;
 
 export interface City {
   id: string;
+  /** 内廷通务司：军机主攻用，不出现在沙盘 */
+  isTongwuSi?: boolean;
   /** 叙事城池名，如「长安」 */
   name: string;
   /** 别名：对应实际产品 / 业务名，如「档案管理员」 */
@@ -61,6 +63,12 @@ export type QuestOccurrence = "one_time" | "daily_once" | "daily_multiple";
 /** 补救分类：绝对类跨日仍提示风险；可补办类不计入「不可弥补」警报 */
 export type QuestCompensationType = "absolute" | "compensable";
 
+/** 军机政务商业维度：产品 / 流量 / 转化 / 交付 */
+export type QuestCategory = "product" | "traffic" | "conversion" | "delivery";
+
+/** 枢密院归属：分城（随征战目标主攻）| 通务（仅通务司主攻可见） */
+export type QuestAffiliation = "city" | "tongwu";
+
 export interface Quest {
   id: string;
   period: QuestPeriod;
@@ -78,6 +86,10 @@ export interface Quest {
   sortOrder: number;
   /** 本城本自然日该任务最多可勘合次数；与 `occurrence` 一致（一次性 / 每日一次 / 每日多次） */
   maxCompletionsPerDay: number;
+  /** 业务维度（枢密院可改；旧档迁移时按 id/标题推断） */
+  category: QuestCategory;
+  /** 分城 vs 通务；旧档按标题【通务】推断 */
+  affiliation: QuestAffiliation;
 }
 
 export type QuestPatch = Partial<Omit<Quest, "id">>;
