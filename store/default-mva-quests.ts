@@ -1,3 +1,4 @@
+import { getQuestCampaignPhase } from "@/lib/campaign-phase";
 import type {
   Quest,
   QuestCategory,
@@ -392,6 +393,10 @@ export function buildDefaultMvaQuestsFromSeeds(): Quest[] {
       maxCompletionsPerDay: maxFromOccurrence(occurrence),
       category: r.category,
       affiliation: "city" as const,
+      campaignPhase: getQuestCampaignPhase({
+        id: `quest-mva-${r.period}-${r.slot}`,
+        title: r.title,
+      }),
     };
   });
 }

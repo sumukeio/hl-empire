@@ -38,6 +38,11 @@ import {
   questAffiliationLabel,
 } from "@/lib/quest-affiliation";
 import {
+  CAMPAIGN_PHASES,
+  campaignPhaseLabel,
+  getQuestCampaignPhase,
+} from "@/lib/campaign-phase";
+import {
   getQuestCategory,
   questCategoryLabel,
   QUEST_CATEGORIES,
@@ -56,6 +61,7 @@ import type {
   CityPatch,
   EventLogType,
   Quest,
+  CampaignPhase,
   QuestAffiliation,
   QuestCategory,
   QuestCompensationType,
@@ -1048,6 +1054,15 @@ function CompactQuestRow({
     );
   };
 
+  const onCampaignPhaseChange = (v: CampaignPhase) => {
+    if (v === getQuestCampaignPhase(quest)) return;
+    updateQuest(quest.id, { campaignPhase: v });
+    addLog(
+      `枢密院：已调整《${quest.title}》战役阶段为「${campaignPhaseLabel(v)}」`,
+      "decree"
+    );
+  };
+
   const logNumericChange = (label: "功勋" | "体力") => {
     const latest = useQuestStore
       .getState()
@@ -1264,7 +1279,25 @@ function CompactQuestRow({
       </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-1 gap-2 border-l-2 border-imperial-gold/25 pl-2 sm:ml-6 sm:grid-cols-2 sm:gap-3 sm:pl-3 lg:grid-cols-5">
+      <div className="mt-2 grid grid-cols-1 gap-2 border-l-2 border-imperial-gold/25 pl-2 sm:ml-6 sm:grid-cols-2 sm:gap-3 sm:pl-3 lg:grid-cols-6">
+        <div className="min-w-0 space-y-1 sm:col-span-2 lg:col-span-2">
+          <Label className="text-[10px] text-slate-500">战役阶段</Label>
+          <Select
+            value={getQuestCampaignPhase(quest)}
+            onValueChange={(v) => onCampaignPhaseChange(v as CampaignPhase)}
+          >
+            <SelectTrigger className={cn("h-8 w-full text-xs", cell)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border-slate-800 bg-slate-950 text-slate-100">
+              {CAMPAIGN_PHASES.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {campaignPhaseLabel(p)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="min-w-0 space-y-1">
           <Label className="text-[10px] text-slate-500">归属</Label>
           <Select

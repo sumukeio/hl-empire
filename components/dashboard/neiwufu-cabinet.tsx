@@ -13,7 +13,12 @@ import {
   CURFEW_HEALTH_THRESHOLD,
   isCurfewMode,
 } from "@/lib/imperial-vitals";
-import { useEmperorStore, useEventStore, DOPAMINE_ENERGY_PER_TICKET } from "@/store";
+import {
+  useEmperorStore,
+  useEventStore,
+  DOPAMINE_ENERGY_PER_TICKET,
+  clampDopaminePool,
+} from "@/store";
 
 const ENTERTAINMENT_MS = 20 * 60 * 1000;
 
@@ -77,9 +82,7 @@ export function NeiwufuCabinet({
   }, [dopaminePoolAnim]);
 
   const dopamineProgressPct =
-    (Math.max(0, Math.min(14, Math.floor(dopaminePool))) /
-      DOPAMINE_ENERGY_PER_TICKET) *
-    100;
+    (clampDopaminePool(dopaminePool) / DOPAMINE_ENERGY_PER_TICKET) * 100;
 
   const curfew = isCurfewMode(health);
   const canAct = !curfew && isDressed && !isEntertaining;
@@ -372,7 +375,7 @@ export function NeiwufuCabinet({
                               多巴胺蓄池
                             </span>
                             <span className="tabular-nums text-imperial-gold/90">
-                              {Math.max(0, Math.min(14, Math.floor(dopaminePool)))} /{" "}
+                              {clampDopaminePool(dopaminePool)} /{" "}
                               {DOPAMINE_ENERGY_PER_TICKET}
                             </span>
                           </div>

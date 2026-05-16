@@ -11,6 +11,17 @@ import {
   normalizeQuestCategory,
 } from "@/lib/quest-category";
 import { isTongwuSiCity } from "@/lib/tongwu-si";
+import {
+  getQuestCampaignPhase,
+  isOpenLearningSystemQuest,
+  normalizeCampaignPhase,
+} from "@/lib/campaign-phase";
+import {
+  computeBatchCampaignTimerThresholds,
+  resolveBatchCampaignEligibility,
+} from "@/lib/batch-campaign";
+import { buildCourtDispatchDecree } from "@/lib/court-dispatch-log";
+import { cityDisplayName } from "@/lib/batch-campaign";
 import { parseBulkQuestText } from "@/lib/parse-bulk-quest-lines";
 import {
   classifyIndustrialSectorFromQuestTitle,
@@ -50,6 +61,21 @@ export type ActiveQuestTimer = {
   /** 当前暂停开始时间；null 表示未暂停 */
   pauseStartedAt: number | null;
 };
+
+/** 集团军集群点卯：多城同一战役任务共用一个计时器 */
+export type ActiveBatchCampaignTimer = ActiveQuestTimer & {
+  cityIds: string[];
+};
+
+export type BatchCampaignStartResult =
+  | {
+      ok: true;
+      participantCount: number;
+      skippedCount: number;
+      T_standard: number;
+      T_floor: number;
+    }
+  | { ok: false; reason: string };
 
 function clampPauseCommitted(ms: number): number {
   return Math.max(
@@ -92,6 +118,19 @@ export function getQuestTimerPauseBudgetUsedMs(
     currentPause = Math.min(raw, pauseCap);
   }
   return Math.min(QUEST_TIMER_MAX_PAUSE_MS, pausedCommitted + currentPause);
+}
+
+function parseActiveBatchCampaign(
+  raw: unknown
+): ActiveBatchCampaignTimer | null {
+  const base = parseActiveTimer(raw);
+  if (!base) return null;
+  const o = raw as Record<string, unknown>;
+  const cityIds = Array.isArray(o.cityIds)
+    ? o.cityIds.filter((x): x is string => typeof x === "string" && x.length > 0)
+    : [];
+  if (cityIds.length === 0) return null;
+  return { ...base, cityIds };
 }
 
 function parseActiveTimer(raw: unknown): ActiveQuestTimer | null {
@@ -216,6 +255,10 @@ export function createEmptyQuest(
     partial?.affiliation != null
       ? normalizeQuestAffiliation(partial.affiliation)
       : getQuestAffiliation({ affiliation: undefined, title });
+  const campaignPhase =
+    partial?.campaignPhase != null
+      ? normalizeCampaignPhase(partial.campaignPhase)
+      : undefined;
   return {
     id,
     period,
@@ -239,6 +282,7 @@ export function createEmptyQuest(
     maxCompletionsPerDay,
     category,
     affiliation,
+    ...(campaignPhase ? { campaignPhase } : {}),
   };
 }
 
@@ -285,6 +329,10 @@ export function migrateQuest(raw: unknown): Quest {
     r.affiliation !== undefined
       ? normalizeQuestAffiliation(r.affiliation)
       : getQuestAffiliation({ affiliation: undefined, title });
+  const campaignPhase =
+    r.campaignPhase !== undefined
+      ? normalizeCampaignPhase(r.campaignPhase)
+      : getQuestCampaignPhase({ id, title, campaignPhase: undefined });
   return {
     id,
     period: normalizePeriod(r.period),
@@ -308,6 +356,7 @@ export function migrateQuest(raw: unknown): Quest {
     maxCompletionsPerDay,
     category,
     affiliation,
+    campaignPhase,
   };
 }
 
@@ -345,6 +394,8 @@ export interface QuestState {
   activeCityId: string | null;
   /** 点卯后、呈报前：仅一桩政务可处于计时中 */
   activeTimer: ActiveQuestTimer | null;
+  /** 集团军集群战役计时（与单机 `activeTimer` 互斥） */
+  activeBatchCampaign: ActiveBatchCampaignTimer | null;
 }
 
 /** 军机勘合结算成功时返回，供邸报 `revert` 与 UI 使用 */
@@ -367,6 +418,14 @@ export type QuestTimerStartedAck = { timerStarted: true };
 
 /** `toggleQuest` 在常规点卯（非 clearDay）时的返回值 */
 export type ToggleQuestRunResult = false | "timer_busy" | QuestTimerStartedAck;
+
+export type BatchCampaignCompleteMeta = ToggleQuestCompletionMeta & {
+  citiesCompleted: number;
+  citiesSkipped: number;
+  totalMerit: number;
+  T_actual: number;
+  T_standard: number;
+};
 
 export interface QuestActions {
   addQuest: (quest: Quest) => void;
@@ -411,6 +470,18 @@ export interface QuestActions {
   setActiveCityId: (id: string | null) => boolean;
   /** 同一时辰内按给定 id 顺序重排（用于拖动） */
   reorderQuestsInPeriod: (period: QuestPeriod, orderedIds: string[]) => void;
+  /** 集群点卯：对多城开启战役计时（扣总体力） */
+  startBatchCampaignQuest: (
+    questId: string,
+    cityIds: string[]
+  ) => BatchCampaignStartResult;
+  /** 呈报集群战役：按批量工时结算并写入各城勘合 */
+  completeBatchCampaignWithTimer: (
+    questId: string
+  ) => false | { shoddy: true } | BatchCampaignCompleteMeta;
+  cancelBatchCampaignTimer: (questId: string) => boolean;
+  toggleBatchCampaignTimerPause: (questId: string) => boolean;
+  syncActiveBatchCampaignPauseIfExhausted: () => void;
 }
 
 export const useQuestStore = create<QuestState & QuestActions>()(
@@ -420,6 +491,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
       lastLoginDate: "",
       activeCityId: null,
       activeTimer: null,
+      activeBatchCampaign: null,
       addQuest: (quest) =>
         set((s) => {
           const id = quest.id || newQuestId();
@@ -520,7 +592,8 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           }),
         })),
       toggleQuest: (questId, opts) => {
-        const { activeCityId, quests, activeTimer } = get();
+        const { activeCityId, quests, activeTimer, activeBatchCampaign } = get();
+        if (activeBatchCampaign) return "timer_busy";
         if (!activeCityId) return false;
         const quest = quests.find((q) => q.id === questId);
         if (!quest) return false;
@@ -786,6 +859,15 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           const qq = quests.find((q) => q.id === activeTimer.questId);
           if (qq) useEmperorStore.getState().addStamina(qq.staminaCost);
         }
+        const batch = get().activeBatchCampaign;
+        if (batch) {
+          const qq = quests.find((q) => q.id === batch.questId);
+          if (qq) {
+            useEmperorStore
+              .getState()
+              .addStamina(qq.staminaCost * batch.cityIds.length);
+          }
+        }
         const oneTimeIds = new Set(
           quests.filter((q) => q.occurrence === "one_time").map((q) => q.id)
         );
@@ -819,6 +901,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           quests: quests.map((q) => ({ ...q, completed: false })),
           lastLoginDate: today,
           activeTimer: null,
+          activeBatchCampaign: null,
         });
         if (tribute > 0) {
           useEmperorStore.getState().injectGold(tribute, { silent: true });
@@ -900,11 +983,259 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         }));
       },
       setActiveCityId: (id) => {
-        if (get().activeTimer) return false;
+        if (get().activeTimer || get().activeBatchCampaign) return false;
         const cities = useMapStore.getState().cities;
         if (id != null && !cities.some((c) => c.id === id)) return false;
         set({ activeCityId: id });
         return true;
+      },
+      startBatchCampaignQuest: (questId, cityIds) => {
+        const { quests, activeTimer, activeBatchCampaign } = get();
+        if (activeTimer || activeBatchCampaign) {
+          return { ok: false, reason: "尚有政务或集群战役计时未呈报。" };
+        }
+        const quest = quests.find((q) => q.id === questId);
+        if (!quest) return { ok: false, reason: "未找到该战役任务。" };
+        const cities = useMapStore.getState().cities;
+        const { eligibleCityIds, skippedCityIds, totalStaminaCost } =
+          resolveBatchCampaignEligibility(quest, cityIds, cities);
+        if (eligibleCityIds.length === 0) {
+          return {
+            ok: false,
+            reason:
+              skippedCityIds.length > 0
+                ? "所选城池该任务均已办满或不可再勘合。"
+                : "请至少勾选一座可参战的征战目标。",
+          };
+        }
+        const emperor = useEmperorStore.getState();
+        if (emperor.stamina < totalStaminaCost) {
+          return { ok: false, reason: "体力不足，无法发动集群点卯。" };
+        }
+        emperor.consumeStamina(totalStaminaCost);
+        const { T_standard, T_floor } = computeBatchCampaignTimerThresholds(
+          quest,
+          eligibleCityIds.length
+        );
+        set({
+          activeBatchCampaign: {
+            questId,
+            cityIds: eligibleCityIds,
+            startTime: Date.now(),
+            pausedMs: 0,
+            pauseStartedAt: null,
+          },
+        });
+        return {
+          ok: true,
+          participantCount: eligibleCityIds.length,
+          skippedCount: skippedCityIds.length,
+          T_standard,
+          T_floor,
+        };
+      },
+      syncActiveBatchCampaignPauseIfExhausted: () => {
+        set((s) => {
+          const t = s.activeBatchCampaign;
+          if (!t?.pauseStartedAt) return s;
+          const now = Date.now();
+          const pausedCommitted = clampPauseCommitted(t.pausedMs);
+          const seg = now - t.pauseStartedAt;
+          const cap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
+          if (seg < cap) return s;
+          return {
+            activeBatchCampaign: {
+              ...t,
+              pausedMs: pausedCommitted + cap,
+              pauseStartedAt: null,
+            },
+          };
+        });
+      },
+      toggleBatchCampaignTimerPause: (questId) => {
+        const t = get().activeBatchCampaign;
+        if (!t || t.questId !== questId) return false;
+        const now = Date.now();
+        const pausedCommitted = clampPauseCommitted(t.pausedMs);
+        if (t.pauseStartedAt != null) {
+          const seg = now - t.pauseStartedAt;
+          const cap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
+          const add = Math.min(Math.max(0, seg), cap);
+          set({
+            activeBatchCampaign: {
+              ...t,
+              pausedMs: pausedCommitted + add,
+              pauseStartedAt: null,
+            },
+          });
+          return true;
+        }
+        if (pausedCommitted >= QUEST_TIMER_MAX_PAUSE_MS) return false;
+        set({ activeBatchCampaign: { ...t, pauseStartedAt: now } });
+        return true;
+      },
+      cancelBatchCampaignTimer: (questId) => {
+        const t = get().activeBatchCampaign;
+        if (!t || t.questId !== questId) return false;
+        if (Date.now() - t.startTime > QUEST_TIMER_CANCEL_WINDOW_MS) return false;
+        const q = get().quests.find((x) => x.id === questId);
+        if (q) {
+          useEmperorStore
+            .getState()
+            .addStamina(q.staminaCost * t.cityIds.length);
+        }
+        set({ activeBatchCampaign: null });
+        return true;
+      },
+      completeBatchCampaignWithTimer: (questId) => {
+        get().syncActiveBatchCampaignPauseIfExhausted();
+        const { quests, activeBatchCampaign } = get();
+        if (!activeBatchCampaign || activeBatchCampaign.questId !== questId) {
+          return false;
+        }
+        const quest = quests.find((q) => q.id === questId);
+        if (!quest) return false;
+
+        const now = Date.now();
+        const T_actual =
+          getQuestTimerEffectiveElapsedMs(activeBatchCampaign, now) / 60_000;
+        const { T_standard, T_floor } = computeBatchCampaignTimerThresholds(
+          quest,
+          activeBatchCampaign.cityIds.length
+        );
+
+        if (T_actual < T_floor) {
+          useEmperorStore
+            .getState()
+            .addStamina(quest.staminaCost * activeBatchCampaign.cityIds.length);
+          set({ activeBatchCampaign: null });
+          return { shoddy: true };
+        }
+
+        const map = useMapStore.getState();
+        const emperor = useEmperorStore.getState();
+        let totalMerit = 0;
+        let citiesCompleted = 0;
+        const completedCityIds: string[] = [];
+
+        for (const cityId of activeBatchCampaign.cityIds) {
+          const city = map.cities.find((c) => c.id === cityId);
+          if (!city) continue;
+          const max = Math.max(1, Math.min(99, quest.maxCompletionsPerDay ?? 1));
+          const inc = map.incrementQuestCompletion(cityId, questId, max);
+          if (!inc) continue;
+          const { meritWithAgri, baseMerit } = computeQuestMeritForCity(
+            quest,
+            cityId
+          );
+          emperor.addExp(meritWithAgri);
+          totalMerit += meritWithAgri;
+          citiesCompleted += 1;
+          completedCityIds.push(cityId);
+          emitIndustrialProgressForQuest(quest, cityId, baseMerit);
+          const { message, cityName } = buildCourtDispatchDecree(quest, city);
+          useEventStore.getState().addLog(message, "decree", { cityName });
+        }
+
+        if (citiesCompleted === 0) {
+          set({ activeBatchCampaign: null });
+          return false;
+        }
+
+        const dMain = emperor.feedDopamineFromQuestReward(totalMerit);
+        let tokensMinted = dMain.tokensMinted;
+        let dopamineExpFed = dMain.dopamineExpFed;
+        let postDopaminePool = dMain.postDopaminePool;
+        let dopamineDrained = 0;
+        let moraleLostForRevert = 0;
+        let healthLostForRevert = 0;
+
+        if (T_floor <= T_actual && T_actual < T_standard) {
+          const diff = T_standard - T_actual;
+          const bonusE = Math.max(0, Math.floor(diff));
+          if (bonusE > 0) {
+            const d2 = emperor.feedDopamineFromQuestReward(bonusE);
+            tokensMinted += d2.tokensMinted;
+            dopamineExpFed += d2.dopamineExpFed;
+            postDopaminePool = d2.postDopaminePool;
+            useEventStore.getState().addLog(
+              `【内务府】集团军神速合围，多巴胺能量额外凝聚 ${bonusE.toLocaleString("zh-CN")} 点。`,
+              "decree",
+              { emphasis: "goldFlash" }
+            );
+          }
+        } else if (T_actual > T_standard) {
+          const overTime = Math.max(0, Math.floor(T_actual - T_standard));
+          if (overTime > 0) {
+            const pen = emperor.applyQuestTimerOvertimePenalty({
+              overTimeMinutes: overTime,
+              compensationType: quest.compensationType,
+            });
+            postDopaminePool = pen.postDopaminePool;
+            dopamineDrained = pen.dopamineDrained;
+            moraleLostForRevert = pen.moraleLost;
+            healthLostForRevert = pen.healthLost;
+            if (pen.dopamineDrained > 0) {
+              useEventStore.getState().addLog(
+                `【太医院】集群战役迁延，心力损耗，多巴胺能量溢出 ${pen.dopamineDrained.toLocaleString("zh-CN")} 点。`,
+                "battle"
+              );
+            }
+            if (pen.overflow > 0) {
+              useEventStore.getState().addLog(
+                "【宗人府】集群战役迁延日久，蓄池枯竭，已致民心动摇。",
+                "battle",
+                { emphasis: "calamity" }
+              );
+            }
+          }
+        }
+
+        if (T_actual > T_standard) {
+          emperor.pulseDopaminePool("drain");
+        } else {
+          emperor.pulseDopaminePool("gain");
+        }
+
+        if (
+          getQuestCampaignPhase(quest) === "ON_ORDER" &&
+          isOpenLearningSystemQuest(quest.title)
+        ) {
+          for (const cityId of completedCityIds) {
+            const city = map.cities.find((c) => c.id === cityId);
+            const label = city ? cityDisplayName(city) : "该城";
+            useEventStore.getState().addLog(
+              `【工部告急】${label} 虽已破城，但粮草空虚，请速执行【转运粮草】任务包，前去下载并上传课程！`,
+              "decree",
+              { emphasis: "crimsonDecree", cityName: label }
+            );
+          }
+        }
+
+        useEventStore.getState().addLog(
+          `【集团军】集群点卯《${quest.title.replace(/^【[^】]+】\s*/, "").slice(0, 20)}》已覆盖 ${citiesCompleted} 座城池，功勋合计 +${totalMerit}。`,
+          "decree",
+          { emphasis: "goldFlash" }
+        );
+
+        set({ activeBatchCampaign: null });
+
+        return {
+          expGain: totalMerit,
+          staminaRestored: quest.staminaCost * citiesCompleted,
+          tokensMinted,
+          postDopaminePool,
+          dopamineExpFed,
+          citiesCompleted,
+          citiesSkipped:
+            activeBatchCampaign.cityIds.length - citiesCompleted,
+          totalMerit,
+          T_actual,
+          T_standard,
+          ...(dopamineDrained > 0 ? { dopamineDrained } : {}),
+          ...(moraleLostForRevert > 0 ? { moraleLost: moraleLostForRevert } : {}),
+          ...(healthLostForRevert > 0 ? { healthLost: healthLostForRevert } : {}),
+        };
       },
       reorderQuestsInPeriod: (period, orderedIds) =>
         set((s) => {
@@ -935,6 +1266,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         lastLoginDate: s.lastLoginDate,
         activeCityId: s.activeCityId,
         activeTimer: s.activeTimer,
+        activeBatchCampaign: s.activeBatchCampaign,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<QuestState> | undefined;
@@ -952,6 +1284,10 @@ export const useQuestStore = create<QuestState & QuestActions>()(
               p && "activeTimer" in p
                 ? parseActiveTimer(p.activeTimer)
                 : current.activeTimer,
+            activeBatchCampaign:
+              p && "activeBatchCampaign" in p
+                ? parseActiveBatchCampaign(p.activeBatchCampaign)
+                : current.activeBatchCampaign,
           };
         }
         const migrated = p.quests.map((q) => migrateQuest(q));
@@ -971,6 +1307,10 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             p && "activeTimer" in p
               ? parseActiveTimer(p.activeTimer)
               : current.activeTimer,
+          activeBatchCampaign:
+            p && "activeBatchCampaign" in p
+              ? parseActiveBatchCampaign(p.activeBatchCampaign)
+              : current.activeBatchCampaign,
         };
       },
     }

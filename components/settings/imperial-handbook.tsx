@@ -163,7 +163,7 @@ export function ImperialHandbookView() {
               <Sub title="御案上常见几块版面">
                 <ul>
                   <li>
-                    <strong>顶栏御案</strong>：尊号与功勋、疆域与军机简报、国库与军费、邸报与勤政录、造办处入口。
+                    <strong>顶栏御案</strong>：尊号与功勋、疆域与军机简报、国库与军费、邸报、勤政录、<strong>集团军（战役集群）</strong>、造办处入口。
                   </li>
                   <li>
                     <strong>九州图志</strong>：一座座「征战目标」城池卡片；点卡展开侧栏奏折。
@@ -359,9 +359,14 @@ export function ImperialHandbookView() {
             </Section>
 
             <Section id="quests" title="8. 军机处">
-              <Sub title="主攻城池">
+              <Sub title="主攻城池与通务司">
                 <p>
-                  军机一切点卯，都记在<strong>当前主攻</strong>那一座城上：必须先选定主城，按钮才亮。大屏用可搜索的下拉；小屏在底栏半屏御案里搜。
+                  军机一切点卯，都记在<strong>当前主攻</strong>上：须先选定<strong>通务司</strong>（天下通务政务）或某一<strong>征战目标</strong>（分城政务），按钮才亮。通务司不出现在九州沙盘，但在主攻下拉里置顶。点卯或集群计时进行中<strong>不可换主攻</strong>。大屏用可搜索下拉；小屏在底栏半屏御案里搜。
+                </p>
+              </Sub>
+              <Sub title="集团军 · 战役集群（另页）">
+                <p>
+                  顶栏<strong>叠层图标</strong>进入<strong>集团军作战室</strong>（<code className="text-[10px] text-slate-400">/dashboard/campaign</code>），与九州主页分离。先选<strong>战役阶段</strong>（筹谋 / 据守 / 接引 / 破城），再多选若干征战城池，对流水线中的分城政务做<strong>集群点卯</strong>：一次扣多城体力、计时按「单任务耗时 × 城数」累加，呈报后功勋合并注入勤政蓄池。破城阶段若办了「开通系统」类大事，邸报会连锁提醒去办<strong>转运粮草</strong>。日常单城仍在本页军机处办理。
                 </p>
               </Sub>
               <Sub title="时辰与政务">
@@ -421,16 +426,16 @@ export function ImperialHandbookView() {
                   有的像圣旨（朱红块）、有的像户部奏销（金边闪）、有的像兵部塘报、有的像起居注。颜色与前缀帮助你在长卷里扫一眼分清缓急；不必背类型名，看句式即可。
                 </p>
               </Sub>
-              <Sub title="勤政录">
+              <Sub title="勤政录与集团军入口">
                 <p>
-                  顶栏日历进入<strong>勤政录</strong>页：按日、按周、按月筛邸报，看摘要统计，并可把当前范围内导出为墨稿或机读两种式样的文书。若跨度极大，因邸报本身有条数上限，远月可能只剩摘要感；若要<strong>全量考古</strong>，仍以帝国密函整包备份为准。
+                  顶栏<strong>日历</strong>进入<strong>勤政录</strong>（按日/周/月筛邸报并导出）；<strong>叠层图标</strong>进入<strong>集团军 · 战役集群</strong>（多城批处理，见 §8）。邸报有条数上限；全量备份用帝国密函。
                 </p>
               </Sub>
             </Section>
 
             <Section id="workshop" title="11. 造办处">
               <p>
-                齿轮入口进入造办处，分三司一档：<strong>图志司</strong>管疆域名册（增删城池、批量拓土、雷霆削藩）；<strong>枢密院</strong>管军机条目（时辰、功勋、体力、每日可办次数、同辰内排序、批量下发大纲）；<strong>帝国档案</strong>管密函封装与读取；另附<strong>帝国手册</strong>即本页，专讲规则与名词。
+                齿轮入口进入造办处，分三司一档：<strong>图志司</strong>管疆域名册（增删城池、批量拓土、雷霆削藩）；<strong>枢密院</strong>管军机条目（<strong>分城政务 / 天下通务</strong>双区、战役阶段、业务维度、时辰、功勋、体力、每日可办次数、排序、批量下发大纲）；<strong>帝国档案</strong>管密函封装与读取；另附<strong>帝国手册</strong>即本页，专讲规则与名词。
               </p>
             </Section>
 

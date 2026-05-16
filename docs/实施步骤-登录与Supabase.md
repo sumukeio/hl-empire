@@ -74,7 +74,7 @@ npm run dev
 
 1. 客户端 **rehydrate** 全部 persist（含 `hanling-prefs`）。  
 2. **已登录**：拉取 `user_empire`；无行或快照为空 → 用当前本地 **upsert 种子**；否则 **解析后覆盖**各 Store（与帝国档案同套校验）。  
-3. 随后执行 **`resetDailyQuests` → `ensureMvaQuestCatalog`**（与方案一致）。  
+3. 随后执行 **`resetDailyQuests` → `ensureQuestBootstrap`**（与方案一致）。  
 4. 对 emperor / map / quest / event / prefs **subscribe**，约 **2.2s 防抖** 后 **upsert** 写回云端（LWW）。  
 5. **`onAuthStateChange`**：处理 **同页登录**（`SIGNED_IN` 再拉云）与 **退出**（清订阅、再跑 catalog）。  
 6. Oracle 首单捷报、红线「早朝停办」已迁入 **`prefs_json` ↔ `usePrefsStore`**，旧 localStorage 键在启动时 **迁移后删除**。

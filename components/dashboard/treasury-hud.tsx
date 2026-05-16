@@ -7,6 +7,7 @@ import {
   Coins,
   Crown,
   Landmark,
+  Layers,
   MapPinned,
   Radio,
   ScrollText,
@@ -651,6 +652,28 @@ export function TreasuryHUD() {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
                   勤政录：按日 / 周 / 月查看邸报并导出
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 border-imperial-gold/50 text-imperial-gold hover:bg-imperial-gold/15"
+                    asChild
+                  >
+                    <Link
+                      href="/dashboard/campaign"
+                      aria-label="集团军 · 战役集群"
+                    >
+                      <Layers className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  集团军：多城战役流水线与集群点卯
                 </TooltipContent>
               </Tooltip>
 

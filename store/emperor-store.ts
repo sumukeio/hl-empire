@@ -18,7 +18,18 @@ import type {
 const EXP_PER_LEVEL = 100;
 
 /** 功勋注入「多巴胺池」后，每满此值铸 1 张翻牌券（余量留在池中） */
-export const DOPAMINE_ENERGY_PER_TICKET = 15;
+export const DOPAMINE_ENERGY_PER_TICKET = 50;
+
+/** 蓄池余量上限（铸券后余量 ∈ [0, DOPAMINE_POOL_MAX]） */
+export const DOPAMINE_POOL_MAX = DOPAMINE_ENERGY_PER_TICKET - 1;
+
+export function clampDopaminePool(n: number): number {
+  return clamp(
+    Math.floor(Number.isFinite(n) ? n : 0),
+    0,
+    DOPAMINE_POOL_MAX
+  );
+}
 
 const ENTERTAINMENT_MS = 20 * 60 * 1000;
 
@@ -64,7 +75,7 @@ export interface EmperorState {
   /** 翻牌券（由军机功勋注入多巴胺池后凝结发放） */
   tokens: number;
   /**
-   * 多巴胺能量池余量（0–14）：军机功勋仅写入此池，满 15 铸 1 券并入 `tokens`。
+   * 多巴胺能量池余量（0–49）：军机功勋仅写入此池，满 50 铸 1 券并入 `tokens`。
    */
   dopaminePool: number;
   /** 宣政殿 true = 已着朝服，可操作；养心殿 false = 睡衣，九州图志遮罩 */
@@ -94,7 +105,7 @@ export interface EmperorState {
 export interface EmperorActions {
   addExp: (amount: number) => void;
   /**
-   * 军机点卯：将本次获得的功勋量注入多巴胺池，按每 15 点铸翻牌券并写邸报。
+   * 军机点卯：将本次获得的功勋量注入多巴胺池，按每 50 点铸翻牌券并写邸报。
    * @returns 铸券张数、结算后池余量、实际注入量（取整后）
    */
   feedDopamineFromQuestReward: (expAmount: number) => {
@@ -245,7 +256,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           Math.min(9999, Math.floor(Number.isFinite(expAmount) ? expAmount : 0))
         );
         if (E <= 0) {
-          const pool = clamp(Math.floor(get().dopaminePool), 0, 14);
+          const pool = clampDopaminePool(get().dopaminePool);
           return {
             tokensMinted: 0,
             postDopaminePool: pool,
@@ -255,7 +266,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         let tokensMinted = 0;
         let postDopaminePool = 0;
         set((s) => {
-          const P0 = clamp(Math.floor(s.dopaminePool), 0, 14);
+          const P0 = clampDopaminePool(s.dopaminePool);
           const total = P0 + E;
           tokensMinted = Math.floor(total / DOPAMINE_ENERGY_PER_TICKET);
           postDopaminePool = total % DOPAMINE_ENERGY_PER_TICKET;
@@ -285,7 +296,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         let drained = 0;
         let postDopaminePool = 0;
         set((s) => {
-          const p0 = clamp(Math.floor(s.dopaminePool), 0, 14);
+          const p0 = clampDopaminePool(s.dopaminePool);
           drained = Math.min(want, p0);
           postDopaminePool = p0 - drained;
           return { dopaminePool: postDopaminePool };
@@ -303,7 +314,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           )
         );
         if (over <= 0) {
-          const pool = clamp(Math.floor(get().dopaminePool), 0, 14);
+          const pool = clampDopaminePool(get().dopaminePool);
           return {
             postDopaminePool: pool,
             dopamineDrained: 0,
@@ -318,7 +329,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         let moraleLost = 0;
         let healthLost = 0;
         set((s) => {
-          const P = clamp(Math.floor(s.dopaminePool), 0, 14);
+          const P = clampDopaminePool(s.dopaminePool);
           const newPool = P - over;
           if (newPool >= 0) {
             postDopaminePool = newPool;
@@ -338,7 +349,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         });
         const snap = get();
         return {
-          postDopaminePool: clamp(Math.floor(snap.dopaminePool), 0, 14),
+          postDopaminePool: clampDopaminePool(snap.dopaminePool),
           dopamineDrained,
           overflow,
           moraleLost,
@@ -592,7 +603,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           let stamina = s.stamina;
           let literature = s.literature;
           let morale = s.morale;
-          let dopaminePool = clamp(Math.floor(s.dopaminePool), 0, 14);
+          let dopaminePool = clampDopaminePool(s.dopaminePool);
 
           if (input.category === "imperial_provisions") {
             stamina = clamp(s.stamina + 20, 0, 100);
@@ -605,7 +616,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           }
           if (input.category === "imperial_travel") {
             literature = s.literature + 10;
-            dopaminePool = clamp(dopaminePool + 5, 0, 14);
+            dopaminePool = clampDopaminePool(dopaminePool + 5);
           }
           if (cornerstone) {
             morale += 2;
@@ -743,12 +754,12 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
             Number.isFinite(dopamineExpFed)
           ) {
             const k = Math.max(0, Math.floor(tokensSubtracted));
-            const P1 = clamp(Math.floor(postDopaminePool), 0, 14);
+            const P1 = clampDopaminePool(postDopaminePool);
             const fed = Math.max(0, Math.floor(dopamineExpFed));
             const D = Math.max(0, Math.floor(dopamineDrained ?? 0));
-            const Pfeed = clamp(P1 + D, 0, 14);
+            const Pfeed = clampDopaminePool(P1 + D);
             const pre = DOPAMINE_ENERGY_PER_TICKET * k + Pfeed - fed;
-            dopaminePool = clamp(pre, 0, 14);
+            dopaminePool = clampDopaminePool(pre);
           }
           return {
             stamina,
@@ -809,7 +820,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         const tokens = typeof p.tokens === "number" ? p.tokens : current.tokens;
         const dopaminePool =
           typeof p.dopaminePool === "number" && Number.isFinite(p.dopaminePool)
-            ? clamp(Math.floor(p.dopaminePool), 0, 14)
+            ? clampDopaminePool(p.dopaminePool)
             : 0;
         const isDressed =
           typeof p.isDressed === "boolean" ? p.isDressed : current.isDressed;

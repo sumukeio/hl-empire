@@ -1,5 +1,10 @@
 export { rehydrateAllStores } from "./rehydrate";
-export { useEmperorStore, DOPAMINE_ENERGY_PER_TICKET } from "./emperor-store";
+export {
+  useEmperorStore,
+  DOPAMINE_ENERGY_PER_TICKET,
+  DOPAMINE_POOL_MAX,
+  clampDopaminePool,
+} from "./emperor-store";
 export {
   useMapStore,
   createDefaultCities,
@@ -32,6 +37,9 @@ export {
   QUEST_TIMER_MAX_PAUSE_MS,
   getQuestTimerEffectiveElapsedMs,
   getQuestTimerPauseBudgetUsedMs,
+  type ActiveBatchCampaignTimer,
+  type BatchCampaignCompleteMeta,
+  type BatchCampaignStartResult,
 } from "./quest-store";
 export type {
   BulkAddQuestsResult,
@@ -54,6 +62,7 @@ export type {
   CityStatus,
   DailyBattleReportInput,
   PersonalExpenseCategory,
+  CampaignPhase,
   Quest,
   QuestAffiliation,
   QuestCategory,
@@ -77,3 +86,10 @@ export {
   QUEST_CATEGORY_FILTER_OPTIONS,
 } from "@/lib/quest-category";
 export type { QuestCategoryFilter } from "@/lib/quest-category";
+export {
+  CAMPAIGN_PHASES,
+  campaignPhaseLabel,
+  filterQuestsByCampaignPhase,
+  getQuestCampaignPhase,
+  normalizeCampaignPhase,
+} from "@/lib/campaign-phase";

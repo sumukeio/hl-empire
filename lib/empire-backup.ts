@@ -6,7 +6,7 @@ import {
 } from "@/store/quest-store";
 import type { PrefsState } from "@/store/prefs-store";
 import { parsePrefsJson } from "@/store/prefs-store";
-import { useEmperorStore } from "@/store/emperor-store";
+import { clampDopaminePool, useEmperorStore } from "@/store/emperor-store";
 import { useEventStore } from "@/store/event-store";
 import { useMapStore } from "@/store/map-store";
 import { usePrefsStore } from "@/store/prefs-store";
@@ -54,7 +54,7 @@ function parseLogRevert(r: Record<string, unknown>): EventLog["revert"] | undefi
       : 0;
   const postDopaminePool =
     typeof o.postDopaminePool === "number" && Number.isFinite(o.postDopaminePool)
-      ? Math.max(0, Math.min(14, Math.floor(o.postDopaminePool)))
+      ? clampDopaminePool(o.postDopaminePool)
       : undefined;
   const dopamineExpFed =
     typeof o.dopamineExpFed === "number" && Number.isFinite(o.dopamineExpFed)
@@ -102,7 +102,7 @@ export type EmpireBackupV1 = {
     health: number;
     martialArts: number;
     tokens: number;
-    /** 军机功勋多巴胺池余量（0–14）；旧密函可无此字段，导入时按 0 */
+    /** 军机功勋多巴胺池余量（0–49）；旧密函可无此字段，导入时按 0 */
     dopaminePool?: number;
     isDressed: boolean;
     isEntertaining: boolean;
@@ -149,7 +149,7 @@ export function collectEmpireBackup(): EmpireBackupV1 {
       tokens: e.tokens,
       dopaminePool:
         typeof e.dopaminePool === "number" && Number.isFinite(e.dopaminePool)
-          ? Math.max(0, Math.min(14, Math.floor(e.dopaminePool)))
+          ? clampDopaminePool(e.dopaminePool)
           : 0,
       isDressed: e.isDressed,
       isEntertaining: e.isEntertaining,
@@ -264,7 +264,7 @@ export function parseEmpireBackupJson(
       typeof e.tokens === "number" && Number.isFinite(e.tokens) ? Math.max(0, e.tokens) : 0,
     dopaminePool:
       typeof e.dopaminePool === "number" && Number.isFinite(e.dopaminePool)
-        ? Math.max(0, Math.min(14, Math.floor(e.dopaminePool)))
+        ? clampDopaminePool(e.dopaminePool)
         : 0,
     isDressed: typeof e.isDressed === "boolean" ? e.isDressed : true,
     isEntertaining: typeof e.isEntertaining === "boolean" ? e.isEntertaining : false,

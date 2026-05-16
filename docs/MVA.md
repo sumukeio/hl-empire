@@ -1,4 +1,4 @@
-> **与「瀚翎帝国」仪表盘**：军机处默认任务（**三十一务** · 政务清单）见 `store/default-mva-quests.ts` / `createDefaultQuests()`；持久化与换日、旧档迁移见 `ensureMvaQuestCatalog` 与 `migrateQuest`。产品设计说明见 `docs/瀚翎帝国-设计与机制说明.md`（§3.4、§4）。
+> **与「瀚翎帝国」仪表盘**：军机处默认任务（**三十一务** · 政务清单）见 `store/default-mva-quests.ts` / `createDefaultQuests()`；启动收尾见 **`ensureQuestBootstrap()`**（通务司 + 勘合键修剪，不强制覆盖用户任务表）；换日与字段迁移见 `resetDailyQuests` / `migrateQuest`。**集团军 · 战役集群**见 **`/dashboard/campaign`** 与 `docs/瀚翎帝国-设计与机制说明.md`（§3.4.1、文首「近期实现更新」）。
 
 - 产品
 

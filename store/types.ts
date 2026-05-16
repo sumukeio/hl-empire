@@ -69,6 +69,13 @@ export type QuestCategory = "product" | "traffic" | "conversion" | "delivery";
 /** 枢密院归属：分城（随征战目标主攻）| 通务（仅通务司主攻可见） */
 export type QuestAffiliation = "city" | "tongwu";
 
+/** 集团军战役流水线阶段（枢密院可映射；旧档按标题/id 推断） */
+export type CampaignPhase =
+  | "PRE_LAUNCH"
+  | "POST_LAUNCH"
+  | "ON_LEAD"
+  | "ON_ORDER";
+
 export interface Quest {
   id: string;
   period: QuestPeriod;
@@ -90,6 +97,8 @@ export interface Quest {
   category: QuestCategory;
   /** 分城 vs 通务；旧档按标题【通务】推断 */
   affiliation: QuestAffiliation;
+  /** 战役集群阶段；分城政务用于「一键调度集团军」流水线 */
+  campaignPhase?: CampaignPhase;
 }
 
 export type QuestPatch = Partial<Omit<Quest, "id">>;
@@ -106,7 +115,7 @@ export type EventLogRevert =
       expSubtracted: number;
       /** 本条勘合结算时实际铸成的翻牌券张数（撤回时扣回） */
       tokensSubtracted: number;
-      /** 本条勘合结算完成后的多巴胺池余量（0–14）；旧邸报无此字段时撤回不调整池 */
+      /** 本条勘合结算完成后的多巴胺池余量；旧邸报无此字段时撤回不调整池 */
       postDopaminePool?: number;
       /** 本条勘合注入池内的功勋量（与 expSubtracted 通常相同） */
       dopamineExpFed?: number;

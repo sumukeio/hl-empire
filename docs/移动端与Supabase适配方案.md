@@ -42,7 +42,7 @@
 ## 3. 现状摘要（与方案相关）
 
 - **布局**：`DashboardShell` 已在 `< lg` 使用底栏 Sheet 承载军机 + 养正司 + 内务府；主区 `pb-24` 防底栏遮挡；大屏三栏分栏。详见设计说明 §5。
-- **持久化**：各 Store `skipHydration: true`，`components/empire-cloud-sync.tsx` 挂载后 `rehydrateAllStores()` → `resetDailyQuests()` → `ensureMvaQuestCatalog()`。
+- **持久化**：各 Store `skipHydration: true`，`components/empire-cloud-sync.tsx` 挂载后 `rehydrateAllStores()` → `resetDailyQuests()` → `ensureQuestBootstrap()`（通务司 + 勘合键修剪；不强制覆盖任务表）。
 - **全量备份**：`lib/empire-backup.ts` + 造办处「帝国档案」JSON 与 Store 形状强相关；上云后仍可保留作人工冷备导出格式。
 
 ---
@@ -126,7 +126,7 @@
 1. 会话有效 → 拉取 `user_empire` 整行。  
 2. **云端有数据**：解析 json → 写入各 Store → `persist` 写本地。  
 3. **云端无数据**：将当前内存/本地四域 + `prefs_json` **合并为首次 PUT**，再视为权威。  
-4. `rehydrateAllStores()` 与 **`resetDailyQuests` / `ensureMvaQuestCatalog`**：建议在 **云 hydrate 完成之后**再执行，避免与云端任务集竞态（与旧文 §4.7 一致）。  
+4. `rehydrateAllStores()` 与 **`resetDailyQuests` / `ensureQuestBootstrap`**：建议在 **云 hydrate 完成之后**再执行，避免与云端任务集竞态（与旧文 §4.7 一致）。  
 5. **登出**：不强制清空 `localStorage`（§2 之 8）；再次登录仍以云为准刷新。
 
 ### 5.5 工程结构建议

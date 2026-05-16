@@ -59,6 +59,7 @@ import {
   getQuestDailyCount,
   isQuestFullyCompletedToday,
   DOPAMINE_ENERGY_PER_TICKET,
+  clampDopaminePool,
   QUEST_TIMER_CANCEL_WINDOW_MS,
   QUEST_TIMER_MAX_PAUSE_MS,
   getQuestTimerEffectiveElapsedMs,
@@ -82,7 +83,7 @@ function formatQuestDurationMinutes(m: number): string {
   return `🕒 ${Math.round(m)}m`;
 }
 
-/** 功勋与翻牌券折算（每 15 功勋 ≈ 1 券） */
+/** 功勋与翻牌券折算（每 50 功勋 ≈ 1 券） */
 function formatMeritLineWithTicket(exp: number): string {
   if (exp <= 0) return "功勋 +0";
   const t = exp / DOPAMINE_ENERGY_PER_TICKET;
@@ -722,10 +723,7 @@ export function QuestEngine({
                   const timerLiveLabel = `计时中: ${formatMmSsFromElapsed(effectiveMs)}${
                     timerIsPaused ? " · 暂停中" : ""
                   }`;
-                  const dopPoolFloor = Math.max(
-                    0,
-                    Math.min(14, Math.floor(dopaminePool))
-                  );
+                  const dopPoolFloor = clampDopaminePool(dopaminePool);
                   const showEmptyPoolWarning =
                     isTimingHere && timerOverdue && dopPoolFloor === 0;
 
