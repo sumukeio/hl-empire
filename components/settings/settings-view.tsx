@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, GripVertical, LogOut, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  LogOut,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 
 import {
   AlertDialog,
@@ -112,6 +122,21 @@ export function SettingsView() {
   const [councilAffiliation, setCouncilAffiliation] =
     useState<QuestAffiliation>("city");
   const [questBulkText, setQuestBulkText] = useState("");
+  const [questImportOpen, setQuestImportOpen] = useState(false);
+  const [questSearch, setQuestSearch] = useState("");
+  const [filterCampaignPhase, setFilterCampaignPhase] = useState<
+    CampaignPhase | "all"
+  >("all");
+  const [filterCategory, setFilterCategory] = useState<QuestCategory | "all">(
+    "all"
+  );
+  const [filterPeriod, setFilterPeriod] = useState<QuestPeriod | "all">("all");
+  const [filterCompensation, setFilterCompensation] = useState<
+    QuestCompensationType | "all"
+  >("all");
+  const [filterOccurrence, setFilterOccurrence] = useState<
+    QuestOccurrence | "all"
+  >("all");
   const [selectedQuestIds, setSelectedQuestIds] = useState<string[]>([]);
   const [questBulkDeleteOpen, setQuestBulkDeleteOpen] = useState(false);
   const [questImportResultOpen, setQuestImportResultOpen] = useState(false);
@@ -128,9 +153,68 @@ export function SettingsView() {
     [quests, councilAffiliation]
   );
 
+  const questCouncilFiltersActive = useMemo(
+    () =>
+      questSearch.trim().length > 0 ||
+      filterCampaignPhase !== "all" ||
+      filterCategory !== "all" ||
+      filterPeriod !== "all" ||
+      filterCompensation !== "all" ||
+      filterOccurrence !== "all",
+    [
+      questSearch,
+      filterCampaignPhase,
+      filterCategory,
+      filterPeriod,
+      filterCompensation,
+      filterOccurrence,
+    ]
+  );
+
+  const filteredCouncilQuests = useMemo(() => {
+    const needle = questSearch.trim().toLowerCase();
+    return councilQuests.filter((q) => {
+      if (needle && !q.title.toLowerCase().includes(needle)) return false;
+      if (
+        filterCampaignPhase !== "all" &&
+        getQuestCampaignPhase(q) !== filterCampaignPhase
+      ) {
+        return false;
+      }
+      if (
+        filterCategory !== "all" &&
+        getQuestCategory(q) !== filterCategory
+      ) {
+        return false;
+      }
+      if (filterPeriod !== "all" && q.period !== filterPeriod) return false;
+      if (
+        filterCompensation !== "all" &&
+        (q.compensationType ?? "compensable") !== filterCompensation
+      ) {
+        return false;
+      }
+      if (
+        filterOccurrence !== "all" &&
+        (q.occurrence ?? "daily_once") !== filterOccurrence
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [
+    councilQuests,
+    questSearch,
+    filterCampaignPhase,
+    filterCategory,
+    filterPeriod,
+    filterCompensation,
+    filterOccurrence,
+  ]);
+
   const sortedCouncilQuests = useMemo(() => {
     const order = new Map(PERIODS.map((p, i) => [p, i]));
-    return [...councilQuests].sort((a, b) => {
+    return [...filteredCouncilQuests].sort((a, b) => {
       const da = (order.get(a.period) ?? 99) - (order.get(b.period) ?? 99);
       if (da !== 0) return da;
       const oa = a.sortOrder ?? 0;
@@ -138,7 +222,16 @@ export function SettingsView() {
       if (oa !== ob) return oa - ob;
       return a.id.localeCompare(b.id);
     });
-  }, [councilQuests]);
+  }, [filteredCouncilQuests]);
+
+  const clearQuestCouncilFilters = useCallback(() => {
+    setQuestSearch("");
+    setFilterCampaignPhase("all");
+    setFilterCategory("all");
+    setFilterPeriod("all");
+    setFilterCompensation("all");
+    setFilterOccurrence("all");
+  }, []);
 
   const [dragQuestId, setDragQuestId] = useState<string | null>(null);
 
@@ -181,8 +274,8 @@ export function SettingsView() {
   }, []);
 
   const allQuestsSelected =
-    councilQuests.length > 0 &&
-    councilQuests.every((q) => selectedQuestIds.includes(q.id));
+    filteredCouncilQuests.length > 0 &&
+    filteredCouncilQuests.every((q) => selectedQuestIds.includes(q.id));
   const someQuestsSelected =
     selectedQuestIds.length > 0 && !allQuestsSelected;
 
@@ -524,7 +617,8 @@ export function SettingsView() {
               <Tabs
                 value={councilAffiliation}
                 onValueChange={(v) => {
-                  setCouncilAffiliation(v as QuestAffiliation);
+                  const next = v as QuestAffiliation;
+                  setCouncilAffiliation(next);
                   setSelectedQuestIds([]);
                 }}
                 className="mb-4"
@@ -551,12 +645,29 @@ export function SettingsView() {
                 </TabsList>
               </Tabs>
 
-              <div className="mb-4 space-y-2 rounded-lg border border-imperial-gold/30 bg-slate-950/35 p-3 sm:p-4">
+              <div className="mb-4 overflow-hidden rounded-lg border border-imperial-gold/30 bg-slate-950/35">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-slate-900/50 sm:px-4"
+                  onClick={() => setQuestImportOpen((o) => !o)}
+                  aria-expanded={questImportOpen}
+                >
+                  <span className="text-xs font-medium text-imperial-gold/90">
+                    批量导入大纲
+                  </span>
+                  {questImportOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-imperial-gold/80" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+                  )}
+                </button>
+                {questImportOpen ? (
+                  <div className="space-y-2 border-t border-imperial-gold/20 px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
                 <Label
                   htmlFor="bulk-quests"
-                  className="text-xs text-imperial-gold/90"
+                  className="text-xs leading-relaxed text-slate-400"
                 >
-                  批量导入（每行一条）：列顺序为{" "}
+                  每行一条，列顺序为{" "}
                   <strong className="text-imperial-gold">
                     标题 · 时段 · 功勋 · 体力
                   </strong>
@@ -571,7 +682,7 @@ export function SettingsView() {
                   <span className="text-slate-400">可补办</span>；时效：
                   <span className="text-slate-400">一次性</span>/
                   <span className="text-slate-400">每日一次</span>/
-                  <span className="text-slate-400">每日多次</span>。输入框内按 Tab 会插入制表符。
+                  <span className="text-slate-400">每日多次</span>。
                 </Label>
                 <Textarea
                   id="bulk-quests"
@@ -608,13 +719,34 @@ export function SettingsView() {
                 >
                   一键下发大纲（批量导入）
                 </Button>
+                  </div>
+                ) : null}
               </div>
+
+              <CouncilQuestFiltersPanel
+                questSearch={questSearch}
+                onQuestSearchChange={setQuestSearch}
+                filterCampaignPhase={filterCampaignPhase}
+                onFilterCampaignPhaseChange={setFilterCampaignPhase}
+                filterCategory={filterCategory}
+                onFilterCategoryChange={setFilterCategory}
+                filterPeriod={filterPeriod}
+                onFilterPeriodChange={setFilterPeriod}
+                filterCompensation={filterCompensation}
+                onFilterCompensationChange={setFilterCompensation}
+                filterOccurrence={filterOccurrence}
+                onFilterOccurrenceChange={setFilterOccurrence}
+                councilQuestCount={councilQuests.length}
+                filteredQuestCount={filteredCouncilQuests.length}
+                filtersActive={questCouncilFiltersActive}
+                onClearFilters={clearQuestCouncilFilters}
+              />
 
               <div className="mb-2 flex flex-wrap items-center gap-3 border-b border-slate-800/90 pb-2">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="select-all-quests"
-                    disabled={councilQuests.length === 0}
+                    disabled={filteredCouncilQuests.length === 0}
                     checked={
                       allQuestsSelected
                         ? true
@@ -624,7 +756,9 @@ export function SettingsView() {
                     }
                     onCheckedChange={(v) => {
                       if (v === true) {
-                        setSelectedQuestIds(councilQuests.map((q) => q.id));
+                        setSelectedQuestIds(
+                          filteredCouncilQuests.map((q) => q.id)
+                        );
                       } else if (v === false) {
                         setSelectedQuestIds([]);
                       }
@@ -678,6 +812,10 @@ export function SettingsView() {
                       {councilAffiliation === "tongwu"
                         ? "暂无天下通务。可在此 Tab 新增或使用上方批量导入。"
                         : "暂无分城政务。可在此 Tab 新增或使用上方批量导入。"}
+                    </p>
+                  ) : filteredCouncilQuests.length === 0 ? (
+                    <p className="py-10 text-center text-sm text-slate-500">
+                      无匹配政务。请调整筛选条件或清除筛选。
                     </p>
                   ) : (
                     sortedCouncilQuests.map((q) => (
@@ -960,6 +1098,164 @@ function CityRow({
       </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CouncilQuestFiltersPanel({
+  questSearch,
+  onQuestSearchChange,
+  filterCampaignPhase,
+  onFilterCampaignPhaseChange,
+  filterCategory,
+  onFilterCategoryChange,
+  filterPeriod,
+  onFilterPeriodChange,
+  filterCompensation,
+  onFilterCompensationChange,
+  filterOccurrence,
+  onFilterOccurrenceChange,
+  councilQuestCount,
+  filteredQuestCount,
+  filtersActive,
+  onClearFilters,
+}: {
+  questSearch: string;
+  onQuestSearchChange: (v: string) => void;
+  filterCampaignPhase: CampaignPhase | "all";
+  onFilterCampaignPhaseChange: (v: CampaignPhase | "all") => void;
+  filterCategory: QuestCategory | "all";
+  onFilterCategoryChange: (v: QuestCategory | "all") => void;
+  filterPeriod: QuestPeriod | "all";
+  onFilterPeriodChange: (v: QuestPeriod | "all") => void;
+  filterCompensation: QuestCompensationType | "all";
+  onFilterCompensationChange: (v: QuestCompensationType | "all") => void;
+  filterOccurrence: QuestOccurrence | "all";
+  onFilterOccurrenceChange: (v: QuestOccurrence | "all") => void;
+  councilQuestCount: number;
+  filteredQuestCount: number;
+  filtersActive: boolean;
+  onClearFilters: () => void;
+}) {
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+        <Input
+          value={questSearch}
+          onChange={(e) => onQuestSearchChange(e.target.value)}
+          placeholder="搜索政务名称（模糊匹配）"
+          className={cn("h-9 pl-8 text-sm", field)}
+          aria-label="搜索政务名称"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <CouncilQuestFilterSelect
+          label="战役阶段"
+          value={filterCampaignPhase}
+          onValueChange={(v) =>
+            onFilterCampaignPhaseChange(v as CampaignPhase | "all")
+          }
+          options={[
+            { value: "all", label: "全部阶段" },
+            ...CAMPAIGN_PHASES.map((p) => ({
+              value: p,
+              label: campaignPhaseLabel(p),
+            })),
+          ]}
+        />
+        <CouncilQuestFilterSelect
+          label="业务维度"
+          value={filterCategory}
+          onValueChange={(v) => onFilterCategoryChange(v as QuestCategory | "all")}
+          options={[
+            { value: "all", label: "全部维度" },
+            ...QUEST_CATEGORIES.map((c) => ({
+              value: c,
+              label: questCategoryLabel(c),
+            })),
+          ]}
+        />
+        <CouncilQuestFilterSelect
+          label="时辰"
+          value={filterPeriod}
+          onValueChange={(v) => onFilterPeriodChange(v as QuestPeriod | "all")}
+          options={[
+            { value: "all", label: "全部时辰" },
+            ...PERIODS.map((p) => ({ value: p, label: p })),
+          ]}
+        />
+        <CouncilQuestFilterSelect
+          label="补救"
+          value={filterCompensation}
+          onValueChange={(v) =>
+            onFilterCompensationChange(v as QuestCompensationType | "all")
+          }
+          options={[
+            { value: "all", label: "全部补救" },
+            { value: "absolute", label: "不可弥补" },
+            { value: "compensable", label: "可补办" },
+          ]}
+        />
+        <CouncilQuestFilterSelect
+          label="时效"
+          value={filterOccurrence}
+          onValueChange={(v) => onFilterOccurrenceChange(v as QuestOccurrence | "all")}
+          options={[
+            { value: "all", label: "全部时效" },
+            { value: "one_time", label: "一次性" },
+            { value: "daily_once", label: "每日一次" },
+            { value: "daily_multiple", label: "每日多次" },
+          ]}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+        <span>
+          当前 Tab 共 {councilQuestCount} 条
+          {filtersActive ? ` · 筛选后 ${filteredQuestCount} 条` : null}
+        </span>
+        {filtersActive ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11px] text-imperial-gold hover:bg-imperial-gold/10"
+            onClick={onClearFilters}
+          >
+            清除筛选
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CouncilQuestFilterSelect({
+  label,
+  value,
+  onValueChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onValueChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <Label className="text-[10px] text-slate-500">{label}</Label>
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger className={cn("h-8 w-full text-[11px]", field)}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="border-slate-800 bg-slate-950 text-slate-100">
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value} className="text-xs">
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

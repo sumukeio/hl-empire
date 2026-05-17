@@ -161,3 +161,101 @@ export interface RecordExpenseInput {
   /** 「九州问道」邸报括号内地点，缺省为「九州」 */
   travelDestination?: string;
 }
+
+/** 巡游四海 · 行程条程别 */
+export type TourItemKind = "sight" | "meal" | "lodge" | "transport" | "ticket";
+
+export type GrandTourStatus = "draft" | "active" | "archived";
+
+export interface TourProvinceGroup {
+  id: string;
+  name: string;
+  sortOrder: number;
+  /** 七大区：华北 / 东北 / 华东 … */
+  macroRegionId?: string;
+}
+
+export interface TourPoi {
+  id: string;
+  name: string;
+  sortOrder: number;
+  defaultTicketPrice?: number;
+}
+
+export interface TourRegion {
+  id: string;
+  provinceGroupId: string;
+  ancientName: string;
+  modernName: string;
+  sortOrder: number;
+  pois: TourPoi[];
+}
+
+export interface TourMealCatalogItem {
+  id: string;
+  venue: string;
+  dish: string;
+  defaultPrice?: number;
+  sortOrder: number;
+}
+
+export interface TourLodgeCatalogItem {
+  id: string;
+  name: string;
+  defaultPrice?: number;
+  regionId?: string;
+  sortOrder: number;
+}
+
+export interface TourTransportCatalogItem {
+  id: string;
+  from: string;
+  to: string;
+  vehicle: string;
+  defaultPrice?: number;
+  sortOrder: number;
+}
+
+export interface TourLegTransport {
+  from: string;
+  to: string;
+  vehicle: string;
+}
+
+export interface TourLeg {
+  id: string;
+  dayIndex: number;
+  period: QuestPeriod;
+  sortOrder: number;
+  kind: TourItemKind;
+  regionId?: string;
+  poiId?: string;
+  mealCatalogId?: string;
+  lodgeCatalogId?: string;
+  transportCatalogId?: string;
+  title: string;
+  subtitle?: string;
+  price?: number;
+  transport?: TourLegTransport;
+}
+
+export interface GrandTour {
+  id: string;
+  title: string;
+  /** 陛下御笔改过标题后不再自动覆盖 */
+  titleCustomized?: boolean;
+  primaryRegionId?: string;
+  legs: TourLeg[];
+  status: GrandTourStatus;
+  startDate?: string;
+  endDate?: string;
+  note?: string;
+}
+
+export interface GrandTourAtlas {
+  provinceGroups: TourProvinceGroup[];
+  regions: TourRegion[];
+  meals: TourMealCatalogItem[];
+  lodges: TourLodgeCatalogItem[];
+  transports: TourTransportCatalogItem[];
+}

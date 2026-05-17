@@ -17,9 +17,10 @@ const toc: { id: string; title: string }[] = [
   { id: "city-sheet", title: "7. 城池奏折" },
   { id: "quests", title: "8. 军机处" },
   { id: "inner-neiwufu", title: "9. 养正司与内务府" },
-  { id: "logs", title: "10. 邸报与勤政录" },
-  { id: "workshop", title: "11. 造办处" },
-  { id: "glossary", title: "12. 名词汇编" },
+  { id: "grand-tour", title: "10. 巡游四海" },
+  { id: "logs", title: "11. 邸报与勤政录" },
+  { id: "workshop", title: "12. 造办处" },
+  { id: "glossary", title: "13. 名词汇编" },
 ];
 
 const tableShell =
@@ -163,7 +164,7 @@ export function ImperialHandbookView() {
               <Sub title="御案上常见几块版面">
                 <ul>
                   <li>
-                    <strong>顶栏御案</strong>：尊号与功勋、疆域与军机简报、国库与军费、邸报、勤政录、<strong>集团军（战役集群）</strong>、造办处入口。
+                    <strong>顶栏御案</strong>：尊号与功勋、疆域与军机简报、国库与军费、邸报、勤政录、<strong>巡游四海（罗盘）</strong>、<strong>集团军（战役集群）</strong>、造办处入口。
                   </li>
                   <li>
                     <strong>九州图志</strong>：一座座「征战目标」城池卡片；点卡展开侧栏奏折。
@@ -182,7 +183,7 @@ export function ImperialHandbookView() {
 
             <Section id="save" title="2. 御案与密函">
               <p>
-                帝国记在<strong>本机御案</strong>里：换浏览器、清缓存、换设备，若无备份，疆域与功勋可能一夜回到开国前。因此造办处备有<strong>帝国密函</strong>：把当时国库、疆域、军机、邸报等一并封进一封可下载的备份文书；他日在新御案上「读取密函」，即可整包还朝。
+                帝国记在<strong>本机御案</strong>里：换浏览器、清缓存、换设备，若无备份，疆域与功勋可能一夜回到开国前。因此造办处备有<strong>帝国密函</strong>：把当时国库、疆域、军机、邸报、<strong>巡游四海行在</strong>（密函字段 <code className="text-[10px] text-slate-400">grandTour</code>）等一并封进一封可下载的备份文书；他日在新御案上「读取密函」，即可整包还朝。
               </p>
               <Sub title="每日上朝时会发生什么">
                 <p>
@@ -401,7 +402,7 @@ export function ImperialHandbookView() {
                     <strong>户部度支</strong>：快捷记一笔「其它基建」式开销（与户部司帑里基建门类一致）；亦可把国库银转存<strong>皇室私库</strong>作巡游基金。
                   </li>
                   <li>
-                    <strong>理藩院</strong>：私库够厚时可出巡人文古迹；亦有网红打卡等耗私库、无增益的叙事选项；并可开关<strong>移动行宫</strong>。
+                    <strong>理藩院</strong>：首行<strong>「开卷舆图 · 巡游四海」</strong>进入真实行在规划（见下章）；私库够厚时可<strong>国子监/太庙</strong>式出巡（叙事奖励）；亦有网红打卡等耗私库、无增益选项；并可开关<strong>移动行宫</strong>。
                   </li>
                   <li>
                     <strong>宗人府</strong>：拒无效社交、召见内阁换功勋与体力、以及「祸国妖姬」线——后者会腰斩私库并大伤民心，纯属高风险叙事按钮。
@@ -415,7 +416,36 @@ export function ImperialHandbookView() {
               </Sub>
             </Section>
 
-            <Section id="logs" title="10. 邸报与勤政录">
+            <Section id="grand-tour" title="10. 巡游四海">
+              <p>
+                <strong>巡游四海</strong>（顶栏<strong>罗盘</strong>或理藩院「开卷舆图」）是<strong>真实旅行</strong>的钦定日程与用度记账，与城池奏折里游戏化的<strong>「巡幸疆土」</strong>不是一回事：后者是一次性犒赏，前者可反复修订、归档、密函备份。
+              </p>
+              <Sub title="舆图库藏与行在">
+                <ul>
+                  <li>
+                    <strong>舆图库藏</strong>：全帝国一份主数据——京畿按<strong>七大区 → 省 → 市</strong>折叠，市名形如<strong>燕京 · 北京市</strong>；可为每京畿维护景点 POI，以及膳宿 / 驻跸 / 驿传<strong>常供</strong>名录。
+                  </li>
+                  <li>
+                    <strong>行在</strong>：每一次出游一份奏折目录（草稿 / 进行中 / 归档）；日程<strong>不预填</strong>，用「+ 本日添程」逐条追加<strong>行程条</strong>。
+                  </li>
+                  <li>
+                    行程引用库藏时记<strong>快照价</strong>；日后改库藏不会追溯改旧行在。删库藏项若仍被引用，仅<strong>提示</strong>。
+                  </li>
+                </ul>
+              </Sub>
+              <Sub title="行程条与用度">
+                <p>
+                  五类：<strong>游览、膳宿、驻跸、驿传、门券</strong>；四时辰与军机相同（早朝 / 晌午 / 傍晚 / 深夜）。同日内可<strong>拖拽</strong>排序、<strong>复制此程</strong>；同日允许重复时辰，但若顺序不合会标<strong>「序时待勘」</strong>（仍可保存）。改日用「移至第 N 日」。用度总账以<strong>「两」</strong>计（<strong>1 两 = 1 元</strong>，仅文案拟古）；<strong>暂不</strong>自动扣内帑，日后或与私库差额联动。
+                </p>
+              </Sub>
+              <Sub title="备份">
+                <p>
+                  御案键名 <code className="text-[10px] text-slate-400">hanling-grand-tour</code>；造办处帝国密函含 <code className="text-[10px] text-slate-400">grandTour</code>，与勤政录、集团军一样可整包迁机。
+                </p>
+              </Sub>
+            </Section>
+
+            <Section id="logs" title="11. 邸报与勤政录">
               <Sub title="邸报是什么">
                 <p>
                   <strong>八百里加急</strong>卷轴里是时间倒序的邸报：抄录你刚做的户部、军机、造办处、宫务等大事。条数在御案上<strong>有上限</strong>（约数十到八十条量级），新抄旧删，以免卷轴无限长。
@@ -426,20 +456,20 @@ export function ImperialHandbookView() {
                   有的像圣旨（朱红块）、有的像户部奏销（金边闪）、有的像兵部塘报、有的像起居注。颜色与前缀帮助你在长卷里扫一眼分清缓急；不必背类型名，看句式即可。
                 </p>
               </Sub>
-              <Sub title="勤政录与集团军入口">
+              <Sub title="勤政录、巡游与集团军入口">
                 <p>
-                  顶栏<strong>日历</strong>进入<strong>勤政录</strong>（按日/周/月筛邸报并导出）；<strong>叠层图标</strong>进入<strong>集团军 · 战役集群</strong>（多城批处理，见 §8）。邸报有条数上限；全量备份用帝国密函。
+                  顶栏<strong>日历</strong>→勤政录；<strong>罗盘</strong>→巡游四海；<strong>叠层图标</strong>→集团军（见 §8、§10）。邸报有条数上限；全量备份用帝国密函。
                 </p>
               </Sub>
             </Section>
 
-            <Section id="workshop" title="11. 造办处">
+            <Section id="workshop" title="12. 造办处">
               <p>
                 齿轮入口进入造办处，分三司一档：<strong>图志司</strong>管疆域名册（增删城池、批量拓土、雷霆削藩）；<strong>枢密院</strong>管军机条目（<strong>分城政务 / 天下通务</strong>双区、战役阶段、业务维度、时辰、功勋、体力、每日可办次数、排序、批量下发大纲）；<strong>帝国档案</strong>管密函封装与读取；另附<strong>帝国手册</strong>即本页，专讲规则与名词。
               </p>
             </Section>
 
-            <Section id="glossary" title="12. 名词汇编">
+            <Section id="glossary" title="13. 名词汇编">
               <table className={tableShell}>
                 <thead>
                   <tr>
@@ -529,6 +559,18 @@ export function ImperialHandbookView() {
                   <tr>
                     <td className={tdCell}>移动行宫</td>
                     <td className={tdCell}>游牧办公开关；开时祖宗之法类军机功勋加成</td>
+                  </tr>
+                  <tr>
+                    <td className={tdCell}>巡游四海</td>
+                    <td className={tdCell}>
+                      行在舆图：真实旅行规划与用度；路由 /dashboard/grand-tour；与巡幸疆土、理藩院内帑叙事出巡分轨
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className={tdCell}>京畿 / 行程条</td>
+                    <td className={tdCell}>
+                      京畿为大目的地（古代雅称 · 现代名称）；行程条为一日内一条日程（游览/膳宿/驻跸/驿传/门券）
+                    </td>
                   </tr>
                   <tr>
                     <td className={tdCell}>帝国密函</td>

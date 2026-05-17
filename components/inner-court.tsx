@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Ban,
@@ -8,6 +9,7 @@ import {
   Coins,
   Landmark,
   Pill,
+  Compass,
   Scroll,
   Skull,
   Tent,
@@ -325,6 +327,22 @@ export function InnerCourtCard({
               </span>
             </div>
             <div className="grid gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                className="h-auto justify-start gap-2 border border-imperial-gold/40 bg-imperial-gold/10 py-2 text-left text-[11px] text-imperial-gold hover:bg-imperial-gold/20"
+                asChild
+              >
+                <Link href="/dashboard/grand-tour">
+                  <Compass className="h-4 w-4 shrink-0" />
+                  <span>
+                    <span className="block font-medium">开卷舆图 · 巡游四海</span>
+                    <span className="text-[10px] font-normal text-imperial-gold/80">
+                      钦定行程 · 汇总用度
+                    </span>
+                  </span>
+                </Link>
+              </Button>
               {canVisitArchives ? (
                 <Button
                   type="button"

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  Compass,
   Coins,
   Crown,
   Landmark,
@@ -652,6 +653,28 @@ export function TreasuryHUD() {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
                   勤政录：按日 / 周 / 月查看邸报并导出
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 border-imperial-gold/50 text-imperial-gold hover:bg-imperial-gold/15"
+                    asChild
+                  >
+                    <Link
+                      href="/dashboard/grand-tour"
+                      aria-label="巡游四海 · 行在舆图"
+                    >
+                      <Compass className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  巡游四海：钦定行程 · 汇总用度
                 </TooltipContent>
               </Tooltip>
 

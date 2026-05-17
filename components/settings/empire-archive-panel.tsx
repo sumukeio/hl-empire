@@ -87,7 +87,7 @@ export function EmpireArchivePanel() {
       <div className="mb-4">
         <h2 className="text-base font-semibold text-primary">帝国档案</h2>
         <p className="text-xs text-slate-500">
-          导出 / 导入完整本地存档（皇帝、征战目标、军机、邸报）。导入将覆盖当前浏览器中的帝国数据。
+          导出 / 导入完整本地存档（皇帝、征战目标、军机、邸报、巡游四海行在）。导入将覆盖当前浏览器中的帝国数据。
         </p>
       </div>
 
@@ -95,7 +95,9 @@ export function EmpireArchivePanel() {
         <div className="space-y-2 rounded-lg border border-slate-800/90 bg-slate-950/40 p-4">
           <Label className="text-xs text-imperial-gold/90">封装密函</Label>
           <p className="text-[11px] leading-relaxed text-slate-500">
-            将当前各御案数据汇总为 JSON 文件，文件名形如{" "}
+            将当前各御案数据汇总为 JSON（含可选字段{" "}
+            <span className="font-mono text-slate-400">grandTour</span>
+            ），文件名形如{" "}
             <span className="font-mono text-slate-400">
               hanling-empire-backup-YYYYMMDD.json
             </span>
@@ -141,7 +143,8 @@ export function EmpireArchivePanel() {
           持久化键名：<span className="font-mono text-slate-400">hanling-emperor</span>、
           <span className="font-mono text-slate-400">hanling-map</span>、
           <span className="font-mono text-slate-400">hanling-quest</span>、
-          <span className="font-mono text-slate-400">hanling-event</span>
+          <span className="font-mono text-slate-400">hanling-event</span>、
+          <span className="font-mono text-slate-400">hanling-grand-tour</span>
           。导入后页面数据即时生效并写回 localStorage。
         </p>
       </div>

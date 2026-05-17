@@ -50,6 +50,12 @@ export type {
 } from "./quest-store";
 export { useEventStore } from "./event-store";
 export {
+  useGrandTourStore,
+  buildSeedAtlas,
+  suggestTourTitle,
+  buildLegFromCatalog,
+} from "./grand-tour-store";
+export {
   usePrefsStore,
   migrateLegacyPrefsFromLocalStorage,
   parsePrefsJson,
@@ -75,6 +81,18 @@ export type {
   EventLogType,
   SubmitCityReportResult,
   SubmitDailyReportResult,
+  TourItemKind,
+  GrandTourStatus,
+  TourProvinceGroup,
+  TourPoi,
+  TourRegion,
+  TourMealCatalogItem,
+  TourLodgeCatalogItem,
+  TourTransportCatalogItem,
+  TourLeg,
+  TourLegTransport,
+  GrandTour,
+  GrandTourAtlas,
 } from "./types";
 export {
   filterQuestsByCategory,

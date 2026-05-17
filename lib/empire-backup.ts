@@ -11,6 +11,11 @@ import { useEventStore } from "@/store/event-store";
 import { useMapStore } from "@/store/map-store";
 import { usePrefsStore } from "@/store/prefs-store";
 import { useQuestStore } from "@/store/quest-store";
+import {
+  buildSeedAtlas,
+  useGrandTourStore,
+} from "@/store/grand-tour-store";
+import type { GrandTour, GrandTourAtlas } from "@/store/types";
 
 export const EMPIRE_BACKUP_VERSION = 1 as const;
 
@@ -121,6 +126,12 @@ export type EmpireBackupV1 = {
   events: { logs: EventLog[] };
   /** 可选：与 prefs_json 同形；旧密函可无此字段 */
   prefs?: PrefsState;
+  /** 巡游四海 · 舆图库藏 + 行在（旧密函可无） */
+  grandTour?: {
+    atlas: GrandTourAtlas;
+    tours: GrandTour[];
+    activeTourId: string | null;
+  };
 };
 
 const MAX_LOGS = 80;
@@ -131,6 +142,21 @@ function formatBackupDateYmd(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}${m}${day}`;
+}
+
+function collectGrandTourBackup(): EmpireBackupV1["grandTour"] {
+  const gt = useGrandTourStore.getState();
+  return {
+    atlas: {
+      provinceGroups: gt.provinceGroups,
+      regions: gt.regions,
+      meals: gt.meals,
+      lodges: gt.lodges,
+      transports: gt.transports,
+    },
+    tours: gt.tours,
+    activeTourId: gt.activeTourId,
+  };
 }
 
 export function collectEmpireBackup(): EmpireBackupV1 {
@@ -178,6 +204,7 @@ export function collectEmpireBackup(): EmpireBackupV1 {
         ...usePrefsStore.getState().redlineMorningStallLoggedDays,
       },
     },
+    grandTour: collectGrandTourBackup(),
   };
 }
 
@@ -339,6 +366,36 @@ export function parseEmpireBackupJson(
 
   const prefs = root.prefs !== undefined ? parsePrefsJson(root.prefs) : undefined;
 
+  let grandTour: EmpireBackupV1["grandTour"];
+  const gtRaw = root.grandTour;
+  if (gtRaw && typeof gtRaw === "object") {
+    const g = gtRaw as Record<string, unknown>;
+    const atlasRaw = g.atlas;
+    if (atlasRaw && typeof atlasRaw === "object") {
+      const a = atlasRaw as Record<string, unknown>;
+      grandTour = {
+        atlas: {
+          provinceGroups: Array.isArray(a.provinceGroups)
+            ? (a.provinceGroups as GrandTourAtlas["provinceGroups"])
+            : buildSeedAtlas().provinceGroups,
+          regions: Array.isArray(a.regions)
+            ? (a.regions as GrandTourAtlas["regions"])
+            : buildSeedAtlas().regions,
+          meals: Array.isArray(a.meals) ? (a.meals as GrandTourAtlas["meals"]) : [],
+          lodges: Array.isArray(a.lodges) ? (a.lodges as GrandTourAtlas["lodges"]) : [],
+          transports: Array.isArray(a.transports)
+            ? (a.transports as GrandTourAtlas["transports"])
+            : [],
+        },
+        tours: Array.isArray(g.tours) ? (g.tours as GrandTour[]) : [],
+        activeTourId:
+          g.activeTourId === null || typeof g.activeTourId === "string"
+            ? (g.activeTourId as string | null)
+            : null,
+      };
+    }
+  }
+
   const data: EmpireBackupV1 = {
     version: EMPIRE_BACKUP_VERSION,
     exportedAt:
@@ -348,6 +405,7 @@ export function parseEmpireBackupJson(
     quest: { quests, lastLoginDate, activeCityId },
     events: { logs },
     ...(prefs ? { prefs } : {}),
+    ...(grandTour ? { grandTour } : {}),
   };
   return { ok: true, data };
 }
@@ -373,5 +431,11 @@ export function applyEmpireBackup(data: EmpireBackupV1): void {
         ...data.prefs.redlineMorningStallLoggedDays,
       },
     });
+  }
+  if (data.grandTour) {
+    useGrandTourStore.getState().replaceAtlasFromBackup(data.grandTour.atlas);
+    useGrandTourStore
+      .getState()
+      .replaceToursFromBackup(data.grandTour.tours, data.grandTour.activeTourId);
   }
 }
