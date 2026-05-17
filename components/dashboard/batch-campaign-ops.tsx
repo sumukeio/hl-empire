@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Layers, Pause, Play, Swords } from "lucide-react";
+import { GripVertical, Pause, Play, Swords } from "lucide-react";
+
+import { CampaignClusterIcon } from "@/components/icons/campaign-cluster-icon";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,6 +17,12 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   CAMPAIGN_PHASES,
   campaignPhaseLabel,
   filterQuestsByCampaignPhase,
@@ -22,10 +30,14 @@ import {
 } from "@/lib/campaign-phase";
 import {
   computeBatchCampaignTimerThresholds,
+  getBatchStartBlockReason,
   resolveBatchCampaignEligibility,
 } from "@/lib/batch-campaign";
 import { getQuestAffiliation } from "@/lib/quest-affiliation";
-import { getTerritoryCities } from "@/lib/tongwu-si";
+import {
+  getTerritoryCities,
+  sortTerritoryCitiesForDisplay,
+} from "@/lib/tongwu-si";
 import { cn } from "@/lib/utils";
 import {
   getQuestTimerEffectiveElapsedMs,
@@ -69,8 +81,10 @@ export function BatchCampaignOps({
   const territoryCities = useMemo(() => getTerritoryCities(cities), [cities]);
   const quests = useQuestStore((s) => s.quests);
   const stamina = useEmperorStore((s) => s.stamina);
+  const activeTimer = useQuestStore((s) => s.activeTimer);
   const activeBatch = useQuestStore((s) => s.activeBatchCampaign);
   const startBatch = useQuestStore((s) => s.startBatchCampaignQuest);
+  const reorderPhaseQuests = useQuestStore((s) => s.reorderCampaignPhaseQuests);
   const completeBatch = useQuestStore((s) => s.completeBatchCampaignWithTimer);
   const cancelBatch = useQuestStore((s) => s.cancelBatchCampaignTimer);
   const toggleBatchPause = useQuestStore((s) => s.toggleBatchCampaignTimerPause);
@@ -85,6 +99,12 @@ export function BatchCampaignOps({
   );
   const [timerTick, setTimerTick] = useState(() => Date.now());
   const [lastMsg, setLastMsg] = useState<string | null>(null);
+  const [dragQuestId, setDragQuestId] = useState<string | null>(null);
+
+  const displayTerritoryCities = useMemo(
+    () => sortTerritoryCitiesForDisplay(territoryCities),
+    [territoryCities]
+  );
 
   useEffect(() => {
     setSelectedCityIds((prev) =>
@@ -130,6 +150,40 @@ export function BatchCampaignOps({
     );
   };
 
+  const handlePipelineDragStart = useCallback((e: React.DragEvent, id: string) => {
+    setDragQuestId(id);
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handlePipelineDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const handlePipelineDrop = useCallback(
+    (e: React.DragEvent, targetId: string) => {
+      e.preventDefault();
+      const raw = e.dataTransfer.getData("text/plain");
+      const dragId = raw || dragQuestId;
+      setDragQuestId(null);
+      if (!dragId || dragId === targetId || activeBatch) return;
+      const ordered = phaseQuests.map((q) => q.id);
+      const from = ordered.indexOf(dragId);
+      const to = ordered.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      const next = [...ordered];
+      next.splice(from, 1);
+      next.splice(to, 0, dragId);
+      reorderPhaseQuests(phase, next);
+    },
+    [activeBatch, dragQuestId, phase, phaseQuests, reorderPhaseQuests]
+  );
+
+  const handlePipelineDragEnd = useCallback(() => {
+    setDragQuestId(null);
+  }, []);
+
   const activeQuest = activeBatch
     ? quests.find((q) => q.id === activeBatch.questId)
     : null;
@@ -146,12 +200,20 @@ export function BatchCampaignOps({
   const onStartBatch = useCallback(
     (quest: Quest) => {
       setLastMsg(null);
-      if (selectedCityIds.length === 0) {
-        setLastMsg("请先勾选参战城池。");
-        return;
-      }
-      if (activeBatch) {
-        setLastMsg("尚有集群战役计时中，请先呈报或撤点卯。");
+      const preview = resolveBatchCampaignEligibility(
+        quest,
+        selectedCityIds,
+        cities
+      );
+      const blockReason = getBatchStartBlockReason({
+        activeBatch,
+        activeTimer,
+        selectedCount: selectedCityIds.length,
+        preview,
+        stamina,
+      });
+      if (blockReason) {
+        setLastMsg(blockReason);
         return;
       }
       const r = startBatch(quest.id, selectedCityIds);
@@ -167,7 +229,16 @@ export function BatchCampaignOps({
         setLastMsg(`${r.skippedCount} 座城池该任务已满或不可勘合，已跳过。`);
       }
     },
-    [activeBatch, addLog, phase, selectedCityIds, startBatch]
+    [
+      activeBatch,
+      activeTimer,
+      addLog,
+      cities,
+      phase,
+      selectedCityIds,
+      stamina,
+      startBatch,
+    ]
   );
 
   const onCompleteBatch = useCallback(
@@ -192,6 +263,7 @@ export function BatchCampaignOps({
   );
 
   return (
+    <TooltipProvider delayDuration={200}>
     <section
       className={cn(
         "rounded-xl border-2 border-imperial-gold/55 bg-slate-950/60 p-4 shadow-inner",
@@ -200,7 +272,7 @@ export function BatchCampaignOps({
       )}
     >
       <div className="mb-3 flex flex-wrap items-start gap-2">
-        <Layers className="mt-0.5 h-5 w-5 shrink-0 text-imperial-gold" />
+        <CampaignClusterIcon className="mt-0.5 text-imperial-gold" />
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-imperial-gold">
             一键调度集团军 · 战役集群
@@ -260,7 +332,7 @@ export function BatchCampaignOps({
             {territoryCities.length === 0 ? (
               <p className="text-xs text-slate-500">图志暂无征战目标。</p>
             ) : (
-              territoryCities.map((c) => {
+              displayTerritoryCities.map((c) => {
                 const checked = selectedCityIds.includes(c.id);
                 return (
                   <label
@@ -354,6 +426,11 @@ export function BatchCampaignOps({
         <div className="space-y-2">
           <Label className="text-[11px] text-imperial-gold/90">
             步骤 C · 任务流水线（{phaseQuests.length}）
+            {!activeBatch && phaseQuests.length > 1 ? (
+              <span className="ml-1 font-normal text-slate-500">
+                · 左侧把手可拖动排序
+              </span>
+            ) : null}
           </Label>
           {phaseQuests.length === 0 ? (
             <p className="py-6 text-center text-xs text-slate-500">
@@ -373,21 +450,42 @@ export function BatchCampaignOps({
                     ? resolveBatchCampaignEligibility(q, selectedCityIds, cities)
                     : null;
                 const isTiming = activeBatch?.questId === q.id;
-                const canStart =
-                  !activeBatch &&
-                  n > 0 &&
-                  preview &&
-                  preview.eligibleCityIds.length > 0 &&
-                  stamina >= preview.totalStaminaCost;
+                const blockReason = getBatchStartBlockReason({
+                  activeBatch,
+                  activeTimer,
+                  selectedCount: n,
+                  preview,
+                  stamina,
+                });
+                const canStart = blockReason === null;
 
                 return (
                   <li
                     key={q.id}
                     className={cn(
                       "flex flex-wrap items-center gap-2 rounded-lg border border-slate-800/90 bg-slate-950/50 px-2.5 py-2",
-                      isTiming && "border-imperial-gold/45 bg-imperial-gold/5"
+                      isTiming && "border-imperial-gold/45 bg-imperial-gold/5",
+                      dragQuestId === q.id && "opacity-60"
                     )}
+                    onDragOver={handlePipelineDragOver}
+                    onDrop={(e) => handlePipelineDrop(e, q.id)}
+                    onDragEnd={handlePipelineDragEnd}
                   >
+                    {!activeBatch ? (
+                      <div
+                        className="flex shrink-0 cursor-grab items-center active:cursor-grabbing"
+                        draggable
+                        onDragStart={(e) => handlePipelineDragStart(e, q.id)}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`拖动排序：${q.title}`}
+                        title="拖动调整流水线顺序"
+                      >
+                        <GripVertical className="h-4 w-4 text-slate-600" />
+                      </div>
+                    ) : (
+                      <span className="w-4 shrink-0" aria-hidden />
+                    )}
                     <Swords className="h-3.5 w-3.5 shrink-0 text-imperial-gold/80" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-slate-100">{q.title}</p>
@@ -402,18 +500,72 @@ export function BatchCampaignOps({
                           </span>
                         ) : null}
                       </p>
+                      {blockReason && !isTiming ? (
+                        <p
+                          className="mt-1 text-[10px] leading-snug text-amber-400/95"
+                          role="status"
+                        >
+                          {blockReason}
+                        </p>
+                      ) : null}
                     </div>
                     {!isTiming ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={!canStart}
-                        className="h-8 shrink-0 border-imperial-gold/45 text-[11px] text-imperial-gold hover:bg-imperial-gold/10"
-                        onClick={() => onStartBatch(q)}
-                      >
-                        集群点卯
-                      </Button>
+                      <div className="flex min-w-[5.5rem] shrink-0 flex-col items-end gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              className={cn(
+                                "inline-flex",
+                                !canStart && "cursor-not-allowed"
+                              )}
+                              tabIndex={canStart ? -1 : 0}
+                              role={canStart ? undefined : "button"}
+                              aria-label={
+                                blockReason
+                                  ? `集群点卯不可用：${blockReason}`
+                                  : "集群点卯"
+                              }
+                              onClick={() => {
+                                if (!canStart && blockReason) {
+                                  setLastMsg(blockReason);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (
+                                  !canStart &&
+                                  blockReason &&
+                                  (e.key === "Enter" || e.key === " ")
+                                ) {
+                                  e.preventDefault();
+                                  setLastMsg(blockReason);
+                                }
+                              }}
+                            >
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={!canStart}
+                                className={cn(
+                                  "h-8 border-imperial-gold/45 text-[11px] text-imperial-gold hover:bg-imperial-gold/10",
+                                  !canStart && "pointer-events-none opacity-55"
+                                )}
+                                onClick={() => onStartBatch(q)}
+                              >
+                                集群点卯
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {blockReason ? (
+                            <TooltipContent
+                              side="left"
+                              className="max-w-[16rem] text-xs leading-relaxed"
+                            >
+                              {blockReason}
+                            </TooltipContent>
+                          ) : null}
+                        </Tooltip>
+                      </div>
                     ) : (
                       <span className="text-[10px] text-imperial-gold">计时中…</span>
                     )}
@@ -434,5 +586,6 @@ export function BatchCampaignOps({
         体力 {stamina} · 已选 {selectedCityIds.length} 城
       </p>
     </section>
+    </TooltipProvider>
   );
 }

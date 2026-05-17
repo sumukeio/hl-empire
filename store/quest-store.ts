@@ -32,6 +32,7 @@ import { useEmperorStore } from "./emperor-store";
 import { useEventStore } from "./event-store";
 import { useMapStore, getQuestDailyCount } from "./map-store";
 import type {
+  CampaignPhase,
   Quest,
   QuestAffiliation,
   QuestCategory,
@@ -40,6 +41,13 @@ import type {
   QuestPatch,
   QuestPeriod,
 } from "./types";
+
+const CAMPAIGN_PHASE_SORT_BASE: Record<CampaignPhase, number> = {
+  PRE_LAUNCH: 0,
+  POST_LAUNCH: 1000,
+  ON_LEAD: 2000,
+  ON_ORDER: 3000,
+};
 import {
   buildDefaultMvaQuestsFromSeeds,
   defaultMvaQuestIdSet,
@@ -470,6 +478,11 @@ export interface QuestActions {
   setActiveCityId: (id: string | null) => boolean;
   /** 同一时辰内按给定 id 顺序重排（用于拖动） */
   reorderQuestsInPeriod: (period: QuestPeriod, orderedIds: string[]) => void;
+  /** 战役集群流水线内拖动排序（仅调整当前阶段任务 sortOrder） */
+  reorderCampaignPhaseQuests: (
+    phase: CampaignPhase,
+    orderedIds: string[]
+  ) => void;
   /** 集群点卯：对多城开启战役计时（扣总体力） */
   startBatchCampaignQuest: (
     questId: string,
@@ -1255,6 +1268,21 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             return { ...q, sortOrder: tail };
           });
           return { quests: [...otherPeriods, ...reindexed, ...restIndexed] };
+        }),
+      reorderCampaignPhaseQuests: (phase, orderedIds) =>
+        set((s) => {
+          const base = CAMPAIGN_PHASE_SORT_BASE[phase];
+          const orderMap = new Map(
+            orderedIds.map((id, idx) => [id, base + idx * 10])
+          );
+          return {
+            quests: s.quests.map((q) => {
+              const next = orderMap.get(q.id);
+              if (next === undefined) return q;
+              if (getQuestCampaignPhase(q) !== phase) return q;
+              return { ...q, sortOrder: next };
+            }),
+          };
         }),
     }),
     {

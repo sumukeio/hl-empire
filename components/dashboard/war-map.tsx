@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type MouseEventHandler,
@@ -30,7 +31,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isCityEquipmentCritical } from "@/lib/city-military";
-import { getTerritoryCities } from "@/lib/tongwu-si";
+import {
+  getTerritoryCities,
+  sortTerritoryCitiesForDisplay,
+} from "@/lib/tongwu-si";
 import { cn } from "@/lib/utils";
 import {
   CITY_STATUS_LABELS,
@@ -75,6 +79,7 @@ export function WarMap({
   const lastLoginDate = useQuestStore((s) => s.lastLoginDate);
 
   const [openId, setOpenId] = useState<string | null>(null);
+  const mapScrollYRef = useRef(0);
   const active = useMemo(
     () => cities.find((c) => c.id === openId) ?? null,
     [cities, openId]
@@ -110,8 +115,10 @@ export function WarMap({
   }, [statusFilter]);
 
   const visibleCities = useMemo(() => {
-    if (!effectiveStatusFilter) return territoryCities;
-    return territoryCities.filter((c) => effectiveStatusFilter.has(c.status));
+    const filtered = effectiveStatusFilter
+      ? territoryCities.filter((c) => effectiveStatusFilter.has(c.status))
+      : territoryCities;
+    return sortTerritoryCitiesForDisplay(filtered);
   }, [territoryCities, effectiveStatusFilter]);
 
   const statusCounts = useMemo(() => {
@@ -150,7 +157,26 @@ export function WarMap({
     }
   }, [openId, visibleCities]);
 
-  const close = () => setOpenId(null);
+  const openCity = (id: string) => {
+    if (typeof window !== "undefined") {
+      const main = document.querySelector<HTMLElement>("main.overflow-y-auto");
+      mapScrollYRef.current = main?.scrollTop ?? window.scrollY;
+    }
+    setOpenId(id);
+  };
+
+  const close = () => {
+    const y = mapScrollYRef.current;
+    setOpenId(null);
+    if (typeof window === "undefined") return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const main = document.querySelector<HTMLElement>("main.overflow-y-auto");
+        if (main) main.scrollTop = y;
+        else window.scrollTo(0, y);
+      });
+    });
+  };
 
   useEffect(() => {
     if (showPajamaOverlay && openId) {
@@ -274,7 +300,7 @@ export function WarMap({
               <SheetTrigger key={city.id} asChild>
                 <CityTileButton
                   city={city}
-                  onSelect={() => setOpenId(city.id)}
+                  onSelect={() => openCity(city.id)}
                 />
               </SheetTrigger>
             ))
@@ -294,6 +320,7 @@ export function WarMap({
             "flex h-full max-h-dvh w-full flex-col gap-0 border-l border-imperial-gold/20 bg-slate-950 p-0 shadow-2xl",
             "sm:max-w-md md:max-w-lg"
           )}
+          onCloseAutoFocus={(e) => e.preventDefault()}
         >
           {active && (
             <>

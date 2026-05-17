@@ -56,6 +56,33 @@ export function resolveBatchCampaignEligibility(
   };
 }
 
+export function getBatchStartBlockReason(input: {
+  activeBatch: unknown;
+  activeTimer: unknown;
+  selectedCount: number;
+  preview: BatchCampaignEligibility | null;
+  stamina: number;
+}): string | null {
+  if (input.activeBatch) {
+    return "尚有集群战役计时中，请先「呈报集群战役」或「撤点卯」。";
+  }
+  if (input.activeTimer) {
+    return "军机处有未呈报的单机点卯，请回九州图志侧栏军机处先呈报奏折或撤点卯。";
+  }
+  if (input.selectedCount === 0) {
+    return "请先在步骤 B 勾选至少一座参战城池。";
+  }
+  if (!input.preview || input.preview.eligibleCityIds.length === 0) {
+    const n = input.selectedCount;
+    return `已选 ${n} 座城池，但该任务在全部城池中均已办满，或一次性任务已完成，无法再次集群点卯。`;
+  }
+  if (input.stamina < input.preview.totalStaminaCost) {
+    const n = input.preview.eligibleCityIds.length;
+    return `体力不足：${n} 座可参战城共需 ${input.preview.totalStaminaCost} 点，当前 ${input.stamina} 点。`;
+  }
+  return null;
+}
+
 export function computeBatchCampaignTimerThresholds(
   quest: Pick<Quest, "minCompletionTime">,
   participantCount: number

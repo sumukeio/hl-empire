@@ -20,6 +20,21 @@ export function getTerritoryCities(cities: readonly City[]): City[] {
   return cities.filter((c) => !isTongwuSiCity(c));
 }
 
+/** 已填别名的城池优先，同组内按城池名排序 */
+export function compareCitiesForDisplay(
+  a: Pick<City, "name" | "alias">,
+  b: Pick<City, "name" | "alias">
+): number {
+  const aHas = Boolean(a.alias?.trim());
+  const bHas = Boolean(b.alias?.trim());
+  if (aHas !== bHas) return aHas ? -1 : 1;
+  return a.name.localeCompare(b.name, "zh-CN");
+}
+
+export function sortTerritoryCitiesForDisplay(cities: readonly City[]): City[] {
+  return [...cities].sort(compareCitiesForDisplay);
+}
+
 export function createTongwuSiCityRecord(): City {
   return {
     id: TONGWU_SI_CITY_ID,

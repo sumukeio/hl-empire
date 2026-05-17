@@ -7,7 +7,6 @@ import {
   Coins,
   Crown,
   Landmark,
-  Layers,
   MapPinned,
   Radio,
   ScrollText,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { EventLogPanel } from "@/components/dashboard/event-log-docket";
+import { CampaignClusterIcon } from "@/components/icons/campaign-cluster-icon";
 import { AscensionLadderDialog } from "@/components/dashboard/ascension-ladder-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -668,7 +668,7 @@ export function TreasuryHUD() {
                       href="/dashboard/campaign"
                       aria-label="集团军 · 战役集群"
                     >
-                      <Layers className="h-4 w-4" />
+                      <CampaignClusterIcon className="h-4 w-4" />
                     </Link>
                   </Button>
                 </TooltipTrigger>

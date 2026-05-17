@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
-import { ArrowLeft, Layers } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { BatchCampaignOps } from "@/components/dashboard/batch-campaign-ops";
+import { CampaignClusterIcon } from "@/components/icons/campaign-cluster-icon";
 import { Button } from "@/components/ui/button";
 import { normalizeCampaignPhase } from "@/lib/campaign-phase";
 import type { CampaignPhase } from "@/store/types";
@@ -52,9 +53,9 @@ export function CampaignOpsPageChrome() {
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
-          <Layers
-            className="h-5 w-5 shrink-0 text-imperial-gold"
-            aria-hidden
+          <CampaignClusterIcon
+            className="text-imperial-gold"
+            title="集团军 · 战役集群"
           />
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-imperial-gold">
