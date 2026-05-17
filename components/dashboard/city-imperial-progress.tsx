@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Coins, Shield, Sprout } from "lucide-react";
 
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { formatTaels } from "@/lib/format-taels";
 import { cn } from "@/lib/utils";
 import { cityStatusProgressTone } from "@/lib/city-status";
 import {
@@ -154,7 +155,7 @@ export function CityImperialProgress({
             <>
               本藩属预计每日进贡{" "}
               <span className="font-medium text-imperial-gold/90 tabular-nums">
-                +{vassalDailySilver}
+                +{formatTaels(vassalDailySilver)}
               </span>{" "}
               两（跨日「藩属进贡」按商业等级汇总入户部）。
             </>

@@ -33,7 +33,6 @@ export {
   createDefaultQuests,
   createEmptyQuest,
   hydrateQuestSortOrderFromPersistOrder,
-  QUEST_TIMER_CANCEL_WINDOW_MS,
   QUEST_TIMER_MAX_PAUSE_MS,
   getQuestTimerEffectiveElapsedMs,
   getQuestTimerPauseBudgetUsedMs,

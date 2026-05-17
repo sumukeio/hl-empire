@@ -42,7 +42,6 @@ import { cn } from "@/lib/utils";
 import {
   getQuestTimerEffectiveElapsedMs,
   getQuestTimerPauseBudgetUsedMs,
-  QUEST_TIMER_CANCEL_WINDOW_MS,
   QUEST_TIMER_MAX_PAUSE_MS,
   useEmperorStore,
   useEventStore,
@@ -396,21 +395,20 @@ export function BatchCampaignOps({
                   </>
                 )}
               </Button>
-              {timerTick - activeBatch.startTime <= QUEST_TIMER_CANCEL_WINDOW_MS ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 text-slate-400"
-                  onClick={() => {
-                    if (cancelBatch(activeBatch.questId)) {
-                      setLastMsg("已撤集群点卯，体力已退还。");
-                    }
-                  }}
-                >
-                  撤点卯
-                </Button>
-              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-8 text-slate-400"
+                title="撤本次集群点卯并退还体力"
+                onClick={() => {
+                  if (cancelBatch(activeBatch.questId)) {
+                    setLastMsg("已撤集群点卯，体力已退还。");
+                  }
+                }}
+              >
+                撤点卯
+              </Button>
               <Button
                 type="button"
                 size="sm"

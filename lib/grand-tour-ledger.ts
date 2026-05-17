@@ -68,8 +68,4 @@ export function computeTourLedger(legs: TourLeg[]): TourLedgerSummary {
   };
 }
 
-export function formatTaels(amount: number): string {
-  const n = Number.isFinite(amount) ? amount : 0;
-  if (Number.isInteger(n)) return n.toLocaleString("zh-CN");
-  return n.toLocaleString("zh-CN", { maximumFractionDigits: 1 });
-}
+export { formatTaels } from "@/lib/format-taels";

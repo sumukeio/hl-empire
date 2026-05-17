@@ -53,11 +53,10 @@ import {
   defaultMvaQuestIdSet,
   maxFromOccurrence,
 } from "./default-mva-quests";
+import { formatTaels } from "@/lib/format-taels";
 
 const PERIODS_ALL: QuestPeriod[] = ["早朝", "晌午", "傍晚", "深夜"];
 
-/** 点卯后三十息内可撤，不扣「误点」代价 */
-export const QUEST_TIMER_CANCEL_WINDOW_MS = 30_000;
 /** 单次政务累计暂停不得超过 2 分钟；暂停不计入用时 */
 export const QUEST_TIMER_MAX_PAUSE_MS = 2 * 60 * 1000;
 
@@ -670,7 +669,6 @@ export const useQuestStore = create<QuestState & QuestActions>()(
       cancelActiveQuestTimer: (questId) => {
         const t = get().activeTimer;
         if (!t || t.questId !== questId) return false;
-        if (Date.now() - t.startTime > QUEST_TIMER_CANCEL_WINDOW_MS) return false;
         const q = get().quests.find((x) => x.id === questId);
         if (q) useEmperorStore.getState().addStamina(q.staminaCost);
         set({ activeTimer: null });
@@ -919,7 +917,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         if (tribute > 0) {
           useEmperorStore.getState().injectGold(tribute, { silent: true });
           useEventStore.getState().addLog(
-            `【户部】万国来朝，藩属进献岁币共计 ${tribute.toLocaleString("zh-CN")} 两，已入国库。`,
+            `【户部】万国来朝，藩属进献岁币共计 ${formatTaels(tribute)} 两，已入国库。`,
             "treasury",
             { emphasis: "goldFlash" }
           );
@@ -1090,7 +1088,6 @@ export const useQuestStore = create<QuestState & QuestActions>()(
       cancelBatchCampaignTimer: (questId) => {
         const t = get().activeBatchCampaign;
         if (!t || t.questId !== questId) return false;
-        if (Date.now() - t.startTime > QUEST_TIMER_CANCEL_WINDOW_MS) return false;
         const q = get().quests.find((x) => x.id === questId);
         if (q) {
           useEmperorStore

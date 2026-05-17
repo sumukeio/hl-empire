@@ -5,6 +5,7 @@ import { Landmark, Radio, Scale, Siren, Sparkles, TrendingUp } from "lucide-reac
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatTaels } from "@/lib/format-taels";
 import { cn } from "@/lib/utils";
 import { todayKey } from "@/lib/today-key";
 import type { City } from "@/store/types";
@@ -97,7 +98,7 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
               户部度支
             </div>
             <p className="mt-1.5 text-xl font-semibold tabular-nums text-imperial-vermilion sm:text-2xl">
-              {totalSpend.toLocaleString("zh-CN")}
+              {formatTaels(totalSpend)}
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">度支总额</p>
           </CardContent>
@@ -130,12 +131,7 @@ export function OracleBriefing({ onLocateCity }: OracleBriefingProps) {
                   : "text-foreground"
               )}
             >
-              {avgCpa === null
-                ? "--"
-                : avgCpa.toLocaleString("zh-CN", {
-                    maximumFractionDigits: 1,
-                    minimumFractionDigits: 0,
-                  })}
+              {avgCpa === null ? "--" : formatTaels(avgCpa)}
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">
               户部度支 / 粮饷总额

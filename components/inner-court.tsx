@@ -27,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { formatTaels } from "@/lib/format-taels";
 import { cn } from "@/lib/utils";
 import { useEmperorStore } from "@/store";
 
@@ -323,7 +324,7 @@ export function InnerCourtCard({
                 理藩院
               </h3>
               <span className="tabular-nums text-[10px] font-medium text-imperial-gold">
-                内帑 {privateVault.toLocaleString("zh-CN")} 两
+                内帑 {formatTaels(privateVault)} 两
               </span>
             </div>
             <div className="grid gap-1.5">

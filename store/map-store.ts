@@ -1,3 +1,4 @@
+import { formatTaels } from "@/lib/format-taels";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -627,7 +628,7 @@ export const useMapStore = create<MapState & MapActions>()(
           }),
         }));
         useEventStore.getState().addLog(
-          `【兵部】${display} 奏报：今日度支 ${spend.toLocaleString("zh-CN")} 两，投诚 ${dLeads.toLocaleString("zh-CN")} 人，收缴粮饷 ${dOrders.toLocaleString("zh-CN")} 单。`,
+          `【兵部】${display} 奏报：今日度支 ${formatTaels(spend)} 两，投诚 ${dLeads.toLocaleString("zh-CN")} 人，收缴粮饷 ${dOrders.toLocaleString("zh-CN")} 单。`,
           "treasury",
           { emphasis: "goldFlash" }
         );

@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { getEmperorTitleProgress } from "@/lib/emperor-title";
+import { formatTaels } from "@/lib/format-taels";
 import { cn } from "@/lib/utils";
 import type { City, PersonalExpenseCategory } from "@/store/types";
 import { useEmperorStore, useMapStore, useQuestStore } from "@/store";
@@ -91,7 +92,7 @@ function EmpireBriefingStrip({ className }: { className?: string }) {
       </span>
       <span className="hidden h-3 w-px bg-slate-700 sm:inline" aria-hidden />
       <span className="tabular-nums text-slate-400">
-        户部度支 <strong className="text-slate-200">{totalCpa}</strong>
+        户部度支 <strong className="text-slate-200">{formatTaels(totalCpa)}</strong>
       </span>
       {isNomadMode ? (
         <>
@@ -292,7 +293,7 @@ export function TreasuryHUD() {
                 >
                   <Coins className="h-4 w-4 shrink-0 text-imperial-gold" aria-hidden />
                   <span className="tabular-nums text-foreground">
-                    {gold.toLocaleString("zh-CN")}
+                    {formatTaels(gold)}
                   </span>
                   <span className="text-xs text-muted-foreground">💰 国库储蓄</span>
                 </button>
@@ -520,7 +521,7 @@ export function TreasuryHUD() {
                     🌾
                   </span>
                   <span className="tabular-nums text-foreground">
-                    {militaryFunds.toLocaleString("zh-CN")}
+                    {formatTaels(militaryFunds)}
                   </span>
                   <span className="text-xs text-muted-foreground">军费余额</span>
                 </button>
@@ -550,11 +551,11 @@ export function TreasuryHUD() {
                       <p className="text-[11px] text-slate-500">
                         当前国库{" "}
                         <span className="tabular-nums text-slate-300">
-                          {gold.toLocaleString("zh-CN")}
+                          {formatTaels(gold)}
                         </span>{" "}
                         两 · 当前军费{" "}
                         <span className="tabular-nums text-emerald-300/90">
-                          {militaryFunds.toLocaleString("zh-CN")}
+                          {formatTaels(militaryFunds)}
                         </span>{" "}
                         两
                       </p>

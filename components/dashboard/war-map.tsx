@@ -35,6 +35,7 @@ import {
   getTerritoryCities,
   sortTerritoryCitiesForDisplay,
 } from "@/lib/tongwu-si";
+import { formatTaels } from "@/lib/format-taels";
 import { cn } from "@/lib/utils";
 import {
   CITY_STATUS_LABELS,
@@ -449,13 +450,13 @@ export function WarMap({
                   <p className="text-[10px] leading-relaxed text-slate-400">
                     今日 CPA（本页录入）：{" "}
                     <span className="font-medium tabular-nums text-imperial-gold/90">
-                      {dailyBattlePreview.spend.toLocaleString("zh-CN")}
+                      {formatTaels(dailyBattlePreview.spend)}
                     </span>
                     <span className="mx-2 text-slate-600">·</span>
                     今日粉成本：
                     <span className="ml-1 font-medium tabular-nums text-sky-300/90">
                       {dailyBattlePreview.costPerLead != null
-                        ? `${dailyBattlePreview.costPerLead.toLocaleString("zh-CN", { maximumFractionDigits: 2, minimumFractionDigits: 0 })} 两/人`
+                        ? `${formatTaels(dailyBattlePreview.costPerLead)} 两/人`
                         : "—（需消耗与加粉均大于 0）"}
                     </span>
                   </p>
@@ -764,7 +765,7 @@ const CityTileButton = forwardRef<
         </p>
       ) : null}
       <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] opacity-90 sm:text-xs">
-        <span>度支 (CPA) {city.cpa}</span>
+        <span>度支 (CPA) {formatTaels(city.cpa)}</span>
         <span className="text-right">粮饷 (单) {city.orders}</span>
         <span className="col-span-2 text-slate-400">
           线索 (粉) {Math.max(0, Math.floor(city.leads ?? 0))}

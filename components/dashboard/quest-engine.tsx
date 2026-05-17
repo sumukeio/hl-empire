@@ -60,7 +60,6 @@ import {
   isQuestFullyCompletedToday,
   DOPAMINE_ENERGY_PER_TICKET,
   clampDopaminePool,
-  QUEST_TIMER_CANCEL_WINDOW_MS,
   QUEST_TIMER_MAX_PAUSE_MS,
   getQuestTimerEffectiveElapsedMs,
   getQuestTimerPauseBudgetUsedMs,
@@ -378,14 +377,7 @@ export function QuestEngine({
   };
 
   const handleCancelQuestTimer = (q: Quest) => {
-    const ok = cancelActiveQuestTimer(q.id);
-    if (!ok) {
-      addLog(
-        "【军机处】点卯已过三十息，难以撤回；请呈报奏折或改易方案。",
-        "info"
-      );
-      return;
-    }
+    if (!cancelActiveQuestTimer(q.id)) return;
     addLog("【军机处】已撤本次点卯，体力已退还。", "info");
   };
 
@@ -715,11 +707,6 @@ export function QuestEngine({
                     activeTimer != null &&
                     pauseUsedMs >= QUEST_TIMER_MAX_PAUSE_MS &&
                     !timerIsPaused;
-                  const canCancelTimer =
-                    isTimingHere &&
-                    activeTimer != null &&
-                    timerTick - activeTimer.startTime <=
-                      QUEST_TIMER_CANCEL_WINDOW_MS;
                   const timerLiveLabel = `计时中: ${formatMmSsFromElapsed(effectiveMs)}${
                     timerIsPaused ? " · 暂停中" : ""
                   }`;
@@ -745,38 +732,33 @@ export function QuestEngine({
                     <li key={q.id}>
                       <div
                         className={cn(
-                          "flex items-center gap-3 rounded-md px-2 py-2 transition-colors",
+                          "flex flex-col gap-2 rounded-md px-2 py-2 transition-colors",
                           rowMuted && "opacity-50",
                           !rowMuted && "hover:bg-muted/40"
                         )}
                       >
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-snug">
-                            <span
+                        <div className="flex min-w-0 items-start gap-2">
+                          <span
+                            className={cn(
+                              "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                              questCategoryDotClass(getQuestCategory(q)),
+                              doneFull && "opacity-70"
+                            )}
+                            title={questCategoryLabel(getQuestCategory(q))}
+                            aria-hidden
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p
                               className={cn(
-                                "inline-flex shrink-0 items-center gap-1.5",
-                                doneFull && "opacity-70"
+                                "break-words text-sm font-medium leading-snug text-foreground",
+                                doneFull &&
+                                  "text-muted-foreground line-through decoration-muted-foreground/80"
                               )}
+                              title={q.title}
                             >
-                              <span
-                                className={cn(
-                                  "h-1.5 w-1.5 rounded-full",
-                                  questCategoryDotClass(getQuestCategory(q))
-                                )}
-                                title={questCategoryLabel(getQuestCategory(q))}
-                                aria-hidden
-                              />
-                              <span
-                                className={cn(
-                                  "font-medium text-foreground",
-                                  doneFull &&
-                                    "text-muted-foreground line-through decoration-muted-foreground/80"
-                                )}
-                              >
-                                {q.title}
-                              </span>
-                            </span>
-                            <span className="text-[10px] font-medium uppercase tracking-wide text-imperial-gold/90">
+                              {q.title}
+                            </p>
+                            <p className="text-[10px] font-medium leading-snug text-imperial-gold/90">
                               {doneFull
                                 ? `本城已办满（${max}/${max}）`
                                 : count > 0
@@ -784,8 +766,7 @@ export function QuestEngine({
                                   : max > 1
                                     ? `本城未办（0/${max}）`
                                     : "本城未办"}
-                            </span>
-                          </div>
+                            </p>
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge
                               variant="secondary"
@@ -811,19 +792,20 @@ export function QuestEngine({
                               </Badge>
                             )}
                           </div>
-                          <p className="text-[10px] text-muted-foreground">
-                            {formatMeritLineWithTicket(displayExp)} · 体力 −
-                            {q.staminaCost}
-                          </p>
+                            <p className="text-[10px] leading-snug text-muted-foreground">
+                              {formatMeritLineWithTicket(displayExp)} · 体力 −
+                              {q.staminaCost}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex max-w-[15rem] shrink-0 flex-col items-end gap-1">
+                        <div className="flex flex-col items-stretch gap-1 sm:items-end">
                           {isTimingHere && activeTimer ? (
                             <p className="text-[9px] tabular-nums text-muted-foreground">
                               {formatPauseBudgetLine(activeTimer, timerTick)}
                             </p>
                           ) : null}
                           {showEmptyPoolWarning ? (
-                            <p className="max-w-[11rem] animate-pulse text-right text-[9px] font-medium leading-tight text-amber-200/95">
+                            <p className="animate-pulse text-right text-[9px] font-medium leading-tight text-amber-200/95">
                               蓄池已空，继续超时将损耗民心/健康！
                             </p>
                           ) : null}
@@ -835,12 +817,7 @@ export function QuestEngine({
                                   variant="ghost"
                                   size="sm"
                                   className="h-8 px-2 text-[10px] text-muted-foreground hover:text-imperial-vermilion"
-                                  disabled={!canCancelTimer}
-                                  title={
-                                    canCancelTimer
-                                      ? "撤本次点卯并退还体力"
-                                      : "仅点卯后三十息内可撤"
-                                  }
+                                  title="撤本次点卯并退还体力"
                                   onClick={() => handleCancelQuestTimer(q)}
                                 >
                                   撤点卯
@@ -909,7 +886,7 @@ export function QuestEngine({
                             </Button>
                           </div>
                           {isTimingHere && timerOverdue ? (
-                            <p className="max-w-[9.5rem] text-right text-[9px] leading-snug text-imperial-vermilion">
+                            <p className="text-right text-[9px] leading-snug text-imperial-vermilion">
                               多巴胺正在流失…
                             </p>
                           ) : null}
@@ -939,7 +916,7 @@ export function QuestEngine({
           军机处
         </h2>
         <p className="text-xs text-muted-foreground">
-          先定主攻城池 · 点卯启计时 · 三十息内可撤 · 暂停累计至多 2 分钟（不计入用时）· 呈报结算
+          先定主攻城池 · 点卯启计时 · 可随时撤点卯退还体力 · 暂停累计至多 2 分钟（不计入用时）· 呈报结算
         </p>
         {isNomadMode ? (
           <p className="mt-1 text-[10px] font-medium text-imperial-gold">

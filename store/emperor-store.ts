@@ -6,6 +6,7 @@ import {
   buildEmperorTitlePromotionMessage,
   getEmperorTitleTierIndex,
 } from "@/lib/emperor-title";
+import { formatTaels } from "@/lib/format-taels";
 
 import { useEventStore } from "./event-store";
 import type {
@@ -384,7 +385,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         const spent = Math.min(Math.max(0, prevGold), inc);
         if (spent <= 0) {
           useEventStore.getState().addLog(
-            `【户部】拨付军饷，【${name}】拟支用 ${inc.toLocaleString("zh-CN")} 两，然国库空虚，未能拨付。`,
+            `【户部】拨付军饷，【${name}】拟支用 ${formatTaels(inc)} 两，然国库空虚，未能拨付。`,
             "treasury"
           );
           return;
@@ -393,8 +394,8 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         const short = spent < inc;
         useEventStore.getState().addLog(
           short
-            ? `【户部】拨付军饷，【${name}】支用 ${spent.toLocaleString("zh-CN")} 两（国库存银不足，尚欠 ${(inc - spent).toLocaleString("zh-CN")} 两未拨）。`
-            : `【户部】拨付军饷，【${name}】支用 ${spent.toLocaleString("zh-CN")} 两。`,
+            ? `【户部】拨付军饷，【${name}】支用 ${formatTaels(spent)} 两（国库存银不足，尚欠 ${formatTaels(inc - spent)} 两未拨）。`
+            : `【户部】拨付军饷，【${name}】支用 ${formatTaels(spent)} 两。`,
           "treasury"
         );
       },
@@ -410,7 +411,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           militaryFunds: Math.max(0, Math.floor(st.militaryFunds ?? 0)) + n,
         }));
         useEventStore.getState().addLog(
-          `【户部】圣上御笔亲批，拨付 ${n.toLocaleString("zh-CN")} 两银钱充作军费，粮草已运往前线。`,
+          `【户部】圣上御笔亲批，拨付 ${formatTaels(n)} 两银钱充作军费，粮草已运往前线。`,
           "treasury"
         );
         return true;
@@ -422,7 +423,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         set((s) => ({ gold: s.gold + n }));
         if (!options?.silent) {
           useEventStore.getState().addLog(
-            `【内务府】岁入拨入 ${n.toLocaleString("zh-CN")} 两，国库充盈。`,
+            `【内务府】岁入拨入 ${formatTaels(n)} 两，国库充盈。`,
             "treasury"
           );
         }
@@ -432,7 +433,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         const n = Math.max(0, Math.floor(total));
         set({ gold: n });
         useEventStore.getState().addLog(
-          `【户部】国库储蓄已校准，当前存银 ${n.toLocaleString("zh-CN")} 两。`,
+          `【户部】国库储蓄已校准，当前存银 ${formatTaels(n)} 两。`,
           "treasury"
         );
       },
@@ -574,7 +575,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
         const cornerstone = input.cornerstone === true;
         const dest =
           (input.travelDestination ?? "").trim().slice(0, 32) || "九州";
-        const amt = amount.toLocaleString("zh-CN");
+        const amt = formatTaels(amount);
 
         let baseMsg = "";
         switch (input.category) {
@@ -644,7 +645,7 @@ export const useEmperorStore = create<EmperorState & EmperorActions>()(
           privateVault: s.privateVault + amount,
         });
         useEventStore.getState().addLog(
-          `【户部】支用 ${Math.round(amount).toLocaleString("zh-CN")} 两，转存皇室私库，为巡游天下积蓄粮草。`,
+          `【户部】支用 ${formatTaels(amount)} 两，转存皇室私库，为巡游天下积蓄粮草。`,
           "treasury",
           { emphasis: "goldFlash" }
         );
