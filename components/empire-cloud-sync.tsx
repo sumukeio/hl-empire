@@ -3,6 +3,10 @@
 import { useEffect, useRef } from "react";
 
 import {
+  bindActivityJournalSync,
+  hydrateActivityJournalFromCloud,
+} from "@/lib/activity-journal-bridge";
+import {
   applyCloudUserEmpireRow,
   fetchUserEmpireRow,
   upsertUserEmpireFromStores,
@@ -16,6 +20,7 @@ import {
   useMapStore,
   usePrefsStore,
   useQuestStore,
+  useWorkSessionStore,
 } from "@/store";
 
 const UPLOAD_DEBOUNCE_MS = 2200;
@@ -93,6 +98,7 @@ export function EmpireCloudSync() {
         return;
       }
       userIdRef.current = userId;
+      bindActivityJournalSync(supabase, userId);
 
       const row = await fetchUserEmpireRow(supabase, userId);
       if (cancelled) return;
@@ -115,6 +121,12 @@ export function EmpireCloudSync() {
         } finally {
           applyingRemote.current = false;
         }
+      }
+
+      const journal = await hydrateActivityJournalFromCloud();
+      if (!cancelled) {
+        useEventStore.getState().replaceLogsFromCloud(journal.logs);
+        useWorkSessionStore.getState().setSessions(journal.sessions);
       }
 
       runPostHydrateCatalog();
@@ -150,6 +162,8 @@ export function EmpireCloudSync() {
         if (event === "SIGNED_OUT" || !session?.user) {
           clearSubs();
           userIdRef.current = null;
+          bindActivityJournalSync(null, null);
+          useWorkSessionStore.getState().clearSessions();
           if (uploadTimer.current) clearTimeout(uploadTimer.current);
           runPostHydrateCatalog();
           return;

@@ -38,6 +38,7 @@ import {
   getTerritoryCities,
   sortTerritoryCitiesForDisplay,
 } from "@/lib/tongwu-si";
+import { touchInput, touchTargetInline } from "@/lib/mobile-ui";
 import { cn } from "@/lib/utils";
 import {
   getQuestTimerEffectiveElapsedMs,
@@ -290,7 +291,12 @@ export function BatchCampaignOps({
             onValueChange={(v) => setPhase(v as CampaignPhase)}
             disabled={Boolean(activeBatch)}
           >
-            <SelectTrigger className="h-10 border-imperial-gold/30 bg-slate-900/80 text-sm">
+            <SelectTrigger
+              className={cn(
+                "border-imperial-gold/30 bg-slate-900/80 text-sm",
+                touchInput
+              )}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -337,7 +343,7 @@ export function BatchCampaignOps({
                   <label
                     key={c.id}
                     className={cn(
-                      "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors",
+                      "flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 text-left text-[11px] transition-colors",
                       checked
                         ? "border-imperial-gold/50 bg-imperial-gold/10 text-slate-100"
                         : "border-slate-700/80 bg-slate-950/60 text-slate-400 hover:border-imperial-gold/25",
@@ -382,7 +388,10 @@ export function BatchCampaignOps({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-8 border-imperial-gold/40 text-imperial-gold"
+                className={cn(
+                  "border-imperial-gold/40 text-imperial-gold",
+                  touchTargetInline
+                )}
                 onClick={() => toggleBatchPause(activeBatch.questId)}
               >
                 {activeBatch.pauseStartedAt != null ? (
@@ -399,7 +408,7 @@ export function BatchCampaignOps({
                 type="button"
                 size="sm"
                 variant="ghost"
-                className="h-8 text-slate-400"
+                className={cn("text-slate-400", touchTargetInline)}
                 title="撤本次集群点卯并退还体力"
                 onClick={() => {
                   if (cancelBatch(activeBatch.questId)) {
@@ -412,7 +421,10 @@ export function BatchCampaignOps({
               <Button
                 type="button"
                 size="sm"
-                className="h-8 bg-primary text-primary-foreground"
+                className={cn(
+                  "bg-primary text-primary-foreground",
+                  touchTargetInline
+                )}
                 onClick={() => onCompleteBatch(activeBatch.questId)}
               >
                 呈报集群战役
@@ -426,7 +438,7 @@ export function BatchCampaignOps({
             步骤 C · 任务流水线（{phaseQuests.length}）
             {!activeBatch && phaseQuests.length > 1 ? (
               <span className="ml-1 font-normal text-slate-500">
-                · 左侧把手可拖动排序
+                · 大屏左侧把手可拖动排序
               </span>
             ) : null}
           </Label>
@@ -471,7 +483,7 @@ export function BatchCampaignOps({
                   >
                     {!activeBatch ? (
                       <div
-                        className="flex shrink-0 cursor-grab items-center active:cursor-grabbing"
+                        className="hidden shrink-0 cursor-grab items-center active:cursor-grabbing sm:flex"
                         draggable
                         onDragStart={(e) => handlePipelineDragStart(e, q.id)}
                         role="button"
@@ -545,7 +557,8 @@ export function BatchCampaignOps({
                                 variant="outline"
                                 disabled={!canStart}
                                 className={cn(
-                                  "h-8 border-imperial-gold/45 text-[11px] text-imperial-gold hover:bg-imperial-gold/10",
+                                  "border-imperial-gold/45 text-[11px] text-imperial-gold hover:bg-imperial-gold/10",
+                                  touchTargetInline,
                                   !canStart && "pointer-events-none opacity-55"
                                 )}
                                 onClick={() => onStartBatch(q)}

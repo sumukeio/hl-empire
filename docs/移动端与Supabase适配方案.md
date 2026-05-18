@@ -72,15 +72,30 @@
 | **WarMap 卡片** | 2 列下字过小 | 控制 `text-[10px]` 下限；Sheet 内表单全宽 |
 | **Sheet / Dialog** | 键盘与安全区 | `env(safe-area-inset-*)`；评估 `100dvh` |
 | **QuestEngine** | iOS 上 Select | 主攻城以 **Drawer** 为准（§2）；其余长列表可用 `ScrollArea` |
-| **settings 造办处** | Tab/表单拥挤 | Tabs 横向滚动或垂直列表；Textarea 全宽 |
+| **settings 造办处** | Tab/表单拥挤 | Tabs 横向滚动（**M1 已做**）；Textarea 全宽、枢密院行表单 **M2** |
+| **子路由** | 与主页布局不一致 | **`MobileSubpageShell`**（**M1 已做**：勤政录/集团军/巡游）；造办处顶栏 **M1** |
 | **横屏 / 折叠屏** | 断点跳跃 | `md`–`lg` 抽样；必要时 `min()` 宽度约束 |
 
 ### 4.3 分阶段（本期）
 
 | 阶段 | 内容 | 验证 |
 |------|------|------|
-| **M1** | HUD 小屏重排、顶栏邸报、安全区、Sheet 高度、触控目标 | iOS Safari + Android Chrome |
-| **M2** | Drawer 选城、造办处小屏、长列表与滚动 | 慢网抽样 |
+| **M1** | HUD 小屏重排、顶栏邸报、安全区、Sheet 高度、触控目标；**子页面**（勤政录 / 集团军 / 巡游 / 造办处）统一壳与 **≥44px** | iOS Safari + Android Chrome |
+| **M2** | 造办处表单全宽与长列表细抠、枢密院行编辑窄屏、WarMap 卡片字号下限等（见检查表未勾项） | 慢网抽样 |
+
+**M1 落地核对（约 2026-05）**
+
+| 区域 | 状态 | 实现要点 |
+|------|------|----------|
+| **TreasuryHUD** | [x] | 小屏块级、`EmpireBriefingStrip` 折行、顶栏图标 **≥44px**、`viewportFit: cover` |
+| **邸报 Dialog** | [x] | 顶栏卷轴 → `EventLogPanel`；北京今日 |
+| **军机选城** | [x] | `< lg` Sheet；`lg+` Select（`quest-engine.tsx`） |
+| **Dashboard 底栏** | [x] | `< lg` Sheet 军机+养正+内务；`pb` 防遮挡 |
+| **勤政录** `/dashboard/activity` | [x] | `MobileSubpageShell`；双 Tab；`touchInput` 日期控件；导出全宽 |
+| **集团军** `/dashboard/campaign` | [x] | `MobileSubpageShell`；Select/chip/点卯 **44px**；`< sm` 无拖把手 |
+| **巡游** `/dashboard/grand-tour` | [x] | `MobileSubpageShell`；**`< lg` 行在目录 Sheet** |
+| **造办处** `/settings` | [x] | 顶栏 safe-area；Tab 横滑 + **44px** |
+| **公共** | [x] | `lib/mobile-ui.ts`、`mobile-subpage-shell.tsx` |
 
 ### 4.4 验收标准（建议）
 
@@ -114,12 +129,20 @@
 | `emperor_json` | jsonb | `hanling-emperor` 形状 |
 | `map_json` | jsonb | `hanling-map` |
 | `quest_json` | jsonb | `hanling-quest` |
-| `event_json` | jsonb | `hanling-event` |
+| `event_json` | jsonb | `hanling-event` 形状（**本地缓存镜像**；叙事邸报权威见 **`event_log`**） |
 | `prefs_json` | jsonb | 原 Oracle / 红线等散落键的统一收编 |
-| `client_schema_version` | int | 与 `empire-backup` 迁移版本对齐 |
+| `grand_tour_json` | jsonb | 巡游四海（`hanling-grand-tour` / 密函 `grandTour`） |
+| `client_schema_version` | int | **2** 起含 `grand_tour_json`；与 `empire-backup` 对齐 |
 | `updated_at` | timestamptz | 服务端 LWW |
 
-**规范化拆表**：非本期范围。
+**勤政录拆表**（`002_activity_journal.sql`，已实现）：
+
+| 表 | 说明 |
+|----|------|
+| **`event_log`** | 邸报叙事；`beijing_date`；`client_log_id` 幂等 |
+| **`quest_work_session`** | 政务工时；一行一周期；**`operations` jsonb** |
+
+**其它规范化拆表**：非本期范围。
 
 ### 5.4 同步与启动顺序（实现约定）
 

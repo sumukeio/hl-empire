@@ -33,7 +33,11 @@
 
 1. 左侧 **SQL Editor → New query**。  
 2. 将仓库内文件 **`supabase/migrations/001_user_empire.sql`** 全文粘贴执行。  
-3. 左侧 **Table Editor** 中应出现表 **`user_empire`**（首期可空表，登录后再由应用写入）。
+3. 再执行 **`supabase/migrations/002_activity_journal.sql`**（勤政录 / 邸报 / 政务工时 + **`grand_tour_json`** 列）。  
+4. **Table Editor** 中应出现：
+   - **`user_empire`**（含 **`grand_tour_json`**）
+   - **`event_log`**
+   - **`quest_work_session`**
 
 ---
 
@@ -70,25 +74,45 @@ npm run dev
 
 ## 第七步：云端同步（已实现于仓库）
 
-以下由代码自动完成（`components/empire-cloud-sync.tsx`、`lib/supabase/empire-sync.ts`、`store/prefs-store.ts`）：
+以下由代码自动完成（`components/empire-cloud-sync.tsx`、`lib/supabase/empire-sync.ts`、`lib/activity-journal-bridge.ts`、`store/prefs-store.ts`）：
 
 1. 客户端 **rehydrate** 全部 persist（含 `hanling-prefs`）。  
-2. **已登录**：拉取 `user_empire`；无行或快照为空 → 用当前本地 **upsert 种子**；否则 **解析后覆盖**各 Store（与帝国档案同套校验）。  
-3. 随后执行 **`resetDailyQuests` → `ensureQuestBootstrap`**（与方案一致）。  
-4. 对 emperor / map / quest / event / prefs **subscribe**，约 **2.2s 防抖** 后 **upsert** 写回云端（LWW）。  
-5. **`onAuthStateChange`**：处理 **同页登录**（`SIGNED_IN` 再拉云）与 **退出**（清订阅、再跑 catalog）。  
-6. Oracle 首单捷报、红线「早朝停办」已迁入 **`prefs_json` ↔ `usePrefsStore`**，旧 localStorage 键在启动时 **迁移后删除**。
+2. **已登录**：拉取 `user_empire`；无行或快照为空 → 用当前本地 **upsert 种子**；否则 **解析后覆盖**各 Store（与帝国档案同套校验，含 **`grand_tour_json`**）。  
+3. **`bindActivityJournalSync`** → 拉取 **`event_log`**、**`quest_work_session`** → 写入 **`useEventStore`** / **`useWorkSessionStore`**。  
+4. 随后执行 **`resetDailyQuests` → `ensureQuestBootstrap`**（与方案一致）。  
+5. 对 emperor / map / quest / event / prefs **subscribe**，约 **2.2s 防抖** 后 **upsert** 写回 **`user_empire`**（**`client_schema_version: 2`**，含巡游）。邸报/工时 **即时** 写各自表（非 event_json 全量镜像）。  
+6. **`onAuthStateChange`**：处理 **同页登录**（`SIGNED_IN` 再拉云）与 **退出**（清订阅、清工时缓存、再跑 catalog）。  
+7. Oracle 首单捷报、红线「早朝停办」已迁入 **`prefs_json` ↔ `usePrefsStore`**，旧 localStorage 键在启动时 **迁移后删除**。
 
 **请你自测**
 
 - 双浏览器同账号：A 改沙盘/军机，等 ~3 秒，B 刷新应看到变化（或再操作触发拉取：当前 B 仅在 **刷新 / 重新登录** 时拉云；多端「秒级」一致需二期 Realtime，方案已定不做）。  
-- Supabase **Table Editor** 打开 `user_empire`，确认 `updated_at` 在操作后变化。
+- Supabase **Table Editor**：`user_empire.updated_at` 随五域变更；点卯后 **`quest_work_session`** 新增一行且 **`operations`** 随动作增长；邸报在 **`event_log`**。  
+- 顶栏 **八百里加急** 仅见 **今日（北京时间）** 邸报；**勤政录 → 政务工时** 可见完整操作时间线。
 
 ## 第八步：H5 适配（已实现）
 
-- **邸报**：`TreasuryHUD` 顶栏 **卷轴** → **Dialog**（`components/dashboard/event-log-docket.tsx` 导出 `EventLogPanel`）。  
+**主页（九州图志）**
+
+- **邸报**：`TreasuryHUD` 顶栏 **卷轴** → **Dialog**（`EventLogPanel`）；默认 **北京时间今日**；完整归档见 **勤政录**。  
 - **军机选城**：`lib/use-is-lg.ts`（`useSyncExternalStore` + `matchMedia`）；**`<1024px`** 为 **底栏 Sheet** 列表，**`lg+`** 仍为 **Select**（`components/dashboard/quest-engine.tsx`）。  
 - **安全区**：`app/layout.tsx` 增加 `viewportFit: "cover"`；`TreasuryHUD` / 底栏军机按钮区使用 **`env(safe-area-inset-*)`**；顶栏主要按钮 **≥44px**。
+
+**子页面（约 2026-05 增量）**
+
+- **公共**：`lib/mobile-ui.ts`、`components/layout/mobile-subpage-shell.tsx`（返回九州、顶/底 safe-area、**44px** 返回钮）。  
+- **勤政录** `/dashboard/activity`：统一壳；邸报/工时双 Tab；筛选与导出小屏全宽。  
+- **集团军** `/dashboard/campaign`：统一壳；战役模式/城池/点卯触控加高；小屏隐藏流水线拖拽把手。  
+- **巡游四海** `/dashboard/grand-tour`：统一壳；**`< lg` 行在目录 Sheet**。  
+- **造办处** `/settings`：顶栏 safe-area；三 Tab 横滑 + 触控高度。
+
+**请你自测（375px 竖屏）**
+
+1. 顶栏邸报卷轴、勤政录/罗盘/集团军图标可点且不贴刘海。  
+2. 底栏「军机处·养正与宫务」Sheet 可滚动、不被 Home 条遮挡。  
+3. 进入勤政录 / 集团军 / 巡游，顶栏 **←** 回 `/dashboard`；勤政录可切换双 Tab 并导出。  
+4. 巡游小屏点 **行在目录** 可换行在；集团军可多选城并点「集群点卯」。  
+5. 造办处三 Tab 可横滑切换。
 
 ## 第九步：上线前检查（手动）
 

@@ -3,7 +3,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   EMPIRE_BACKUP_VERSION,
   applyEmpireBackup,
+  applyGrandTourCloudJson,
   collectEmpireBackup,
+  collectGrandTourCloudJson,
   parseEmpireBackupJson,
 } from "@/lib/empire-backup";
 
@@ -14,6 +16,7 @@ export type UserEmpireRow = {
   quest_json: unknown;
   event_json: unknown;
   prefs_json: unknown;
+  grand_tour_json: unknown;
   client_schema_version: number | null;
   updated_at: string;
 };
@@ -53,6 +56,9 @@ export function applyCloudUserEmpireRow(row: UserEmpireRow): boolean {
     return false;
   }
   applyEmpireBackup(parsed.data);
+  if (row.grand_tour_json && typeof row.grand_tour_json === "object") {
+    applyGrandTourCloudJson(row.grand_tour_json);
+  }
   return true;
 }
 
@@ -63,7 +69,7 @@ export async function fetchUserEmpireRow(
   const { data, error } = await supabase
     .from("user_empire")
     .select(
-      "user_id, emperor_json, map_json, quest_json, event_json, prefs_json, client_schema_version, updated_at"
+      "user_id, emperor_json, map_json, quest_json, event_json, prefs_json, grand_tour_json, client_schema_version, updated_at"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -91,6 +97,7 @@ export async function upsertUserEmpireFromStores(
         oracleFirstOrderJiebaoDate: "",
         redlineMorningStallLoggedDays: {},
       },
+      grand_tour_json: collectGrandTourCloudJson(),
       client_schema_version: EMPIRE_BACKUP_VERSION,
     },
     { onConflict: "user_id" }

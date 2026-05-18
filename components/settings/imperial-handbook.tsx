@@ -172,6 +172,9 @@ export function ImperialHandbookView() {
                   <li>
                     <strong>军机与宫务</strong>：大屏在侧栏分栏；小屏从底栏抽出的半屏御案进入，纵向翻阅军机、养正司、内务府。
                   </li>
+                  <li>
+                    <strong>专页（勤政录、巡游、集团军）</strong>：从顶栏图标进入独立页面，左上角<strong>返回九州图志</strong>；窄屏下按钮与日期选择更易点按。巡游在小屏用<strong>行在目录</strong>侧栏换行在，不必挤占主编辑区。
+                  </li>
                 </ul>
               </Sub>
               <Sub title="读数习惯">
@@ -183,7 +186,7 @@ export function ImperialHandbookView() {
 
             <Section id="save" title="2. 御案与密函">
               <p>
-                帝国记在<strong>本机御案</strong>里：换浏览器、清缓存、换设备，若无备份，疆域与功勋可能一夜回到开国前。因此造办处备有<strong>帝国密函</strong>：把当时国库、疆域、军机、邸报、<strong>巡游四海行在</strong>（密函字段 <code className="text-[10px] text-slate-400">grandTour</code>）等一并封进一封可下载的备份文书；他日在新御案上「读取密函」，即可整包还朝。
+                登录后，疆域、军机、皇帝御案与巡游等会<strong>同步云端</strong>（换设备登录可还朝）；本机仍有一份缓存以便首屏加速。造办处<strong>帝国密函</strong>可把国库、疆域、军机、邸报摘录、<strong>巡游四海行在</strong>（<code className="text-[10px] text-slate-400">grandTour</code>）封成 JSON 备份；<strong>政务工时明细</strong>在云端勤政录中永久保留，密函 JSON 导出勤政录时可含工时行。
               </p>
               <Sub title="每日上朝时会发生什么">
                 <p>
@@ -448,7 +451,7 @@ export function ImperialHandbookView() {
             <Section id="logs" title="11. 邸报与勤政录">
               <Sub title="邸报是什么">
                 <p>
-                  <strong>八百里加急</strong>卷轴里是时间倒序的邸报：抄录你刚做的户部、军机、造办处、宫务等大事。条数在御案上<strong>有上限</strong>（约数十到八十条量级），新抄旧删，以免卷轴无限长。
+                  <strong>八百里加急</strong>卷轴抄录户部、军机、造办处、宫务等<strong>叙事捷报</strong>，默认只展示<strong>北京时间今日</strong>；时间为年月日时分秒。不含点卯暂停、用了几分钟等<strong>工时明细</strong>——那些在勤政录另一页。
                 </p>
               </Sub>
               <Sub title="语气与颜色">
@@ -456,9 +459,14 @@ export function ImperialHandbookView() {
                   有的像圣旨（朱红块）、有的像户部奏销（金边闪）、有的像兵部塘报、有的像起居注。颜色与前缀帮助你在长卷里扫一眼分清缓急；不必背类型名，看句式即可。
                 </p>
               </Sub>
-              <Sub title="勤政录、巡游与集团军入口">
+              <Sub title="勤政录（双卷）">
                 <p>
-                  顶栏<strong>日历</strong>→勤政录；<strong>罗盘</strong>→巡游四海；<strong>叠层图标</strong>→集团军（见 §8、§10）。邸报有条数上限；全量备份用帝国密函。
+                  顶栏<strong>日历</strong>进入勤政录：<strong>邸报摘录</strong>可按日/周/月翻查并导出；<strong>政务工时</strong>按「一条政务办理周期一行」列出点卯开表、暂停、撤点卯、呈报等全部动作及北京时间。登录后工时与邸报归档在云端，长期可查。
+                </p>
+              </Sub>
+              <Sub title="巡游与集团军入口">
+                <p>
+                  顶栏<strong>罗盘</strong>→巡游四海；<strong>叠层图标</strong>→集团军（见 §8、§10）。离线备份仍可用帝国密函；勤政录 JSON 导出可含工时。
                 </p>
               </Sub>
             </Section>

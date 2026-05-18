@@ -22,6 +22,12 @@ import {
 } from "@/lib/batch-campaign";
 import { buildCourtDispatchDecree } from "@/lib/court-dispatch-log";
 import { cityDisplayName } from "@/lib/batch-campaign";
+import {
+  newWorkSessionId,
+  recordBatchTimerStart,
+  recordQuestTimerStart,
+  recordWorkOp,
+} from "@/lib/work-session-recorder";
 import { parseBulkQuestText } from "@/lib/parse-bulk-quest-lines";
 import {
   classifyIndustrialSectorFromQuestTitle,
@@ -67,6 +73,8 @@ export type ActiveQuestTimer = {
   pausedMs: number;
   /** 当前暂停开始时间；null 表示未暂停 */
   pauseStartedAt: number | null;
+  /** 勤政录政务工时行 id（quest_work_session.client_session_id） */
+  clientSessionId: string;
 };
 
 /** 集团军集群点卯：多城同一战役任务共用一个计时器 */
@@ -158,7 +166,11 @@ function parseActiveTimer(raw: unknown): ActiveQuestTimer | null {
     typeof o.pauseStartedAt === "number" && Number.isFinite(o.pauseStartedAt)
       ? o.pauseStartedAt
       : null;
-  return { questId, startTime, pausedMs, pauseStartedAt };
+  const clientSessionId =
+    typeof o.clientSessionId === "string" && o.clientSessionId.length > 0
+      ? o.clientSessionId
+      : newWorkSessionId();
+  return { questId, startTime, pausedMs, pauseStartedAt, clientSessionId };
 }
 
 function computeQuestMeritForCity(
@@ -638,12 +650,15 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         if (emperor.stamina < quest.staminaCost) return false;
 
         emperor.consumeStamina(quest.staminaCost);
+        const clientSessionId = newWorkSessionId();
+        void recordQuestTimerStart({ clientSessionId, quest, city });
         set({
           activeTimer: {
             questId,
             startTime: Date.now(),
             pausedMs: 0,
             pauseStartedAt: null,
+            clientSessionId,
           },
         });
         return { timerStarted: true };
@@ -671,6 +686,10 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         if (!t || t.questId !== questId) return false;
         const q = get().quests.find((x) => x.id === questId);
         if (q) useEmperorStore.getState().addStamina(q.staminaCost);
+        void recordWorkOp(t.clientSessionId, "timer_cancel", {
+          staminaRefunded: q?.staminaCost ?? 0,
+          status: "cancelled",
+        });
         set({ activeTimer: null });
         return true;
       },
@@ -683,6 +702,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           const seg = now - t.pauseStartedAt;
           const cap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
           const add = Math.min(Math.max(0, seg), cap);
+          void recordWorkOp(t.clientSessionId, "timer_resume");
           set({
             activeTimer: {
               ...t,
@@ -693,6 +713,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           return true;
         }
         if (pausedCommitted >= QUEST_TIMER_MAX_PAUSE_MS) return false;
+        void recordWorkOp(t.clientSessionId, "timer_pause");
         set({ activeTimer: { ...t, pauseStartedAt: now } });
         return true;
       },
@@ -716,6 +737,14 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         const T_floor = T_standard * 0.5;
 
         if (T_actual < T_floor) {
+          const voidMs = getQuestTimerEffectiveElapsedMs(activeTimer, now);
+          void recordWorkOp(activeTimer.clientSessionId, "shoddy_void", {
+            status: "voided",
+            effectiveDurationMs: voidMs,
+            effectiveDurationMinutes:
+              Math.round((voidMs / 60_000) * 100) / 100,
+            standardMinutes: T_standard,
+          });
           useEmperorStore.getState().addStamina(quest.staminaCost);
           set({ activeTimer: null });
           return { shoddy: true };
@@ -803,6 +832,15 @@ export const useQuestStore = create<QuestState & QuestActions>()(
 
         emitIndustrialProgressForQuest(quest, activeCityId, baseMerit);
 
+        const effMs = getQuestTimerEffectiveElapsedMs(activeTimer, now);
+        void recordWorkOp(activeTimer.clientSessionId, "complete", {
+          status: "completed",
+          effectiveDurationMs: effMs,
+          effectiveDurationMinutes:
+            Math.round((effMs / 60_000) * 100) / 100,
+          standardMinutes: T_standard,
+        });
+
         set({ activeTimer: null });
 
         return {
@@ -850,6 +888,20 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         const dop = emperor.feedDopamineFromQuestReward(sopE);
 
         emitIndustrialProgressForQuest(quest, activeCityId, baseMerit);
+
+        const sopNow = Date.now();
+        const sopMs = getQuestTimerEffectiveElapsedMs(activeTimer, sopNow);
+        const sopStandard = Math.max(
+          1,
+          Math.floor(quest.minCompletionTime ?? 10)
+        );
+        void recordWorkOp(activeTimer.clientSessionId, "sop_complete", {
+          status: "completed",
+          effectiveDurationMs: sopMs,
+          effectiveDurationMinutes:
+            Math.round((sopMs / 60_000) * 100) / 100,
+          standardMinutes: sopStandard,
+        });
 
         set({ activeTimer: null });
         useEmperorStore.getState().pulseDopaminePool("gain");
@@ -1028,6 +1080,12 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           quest,
           eligibleCityIds.length
         );
+        const clientSessionId = newWorkSessionId();
+        void recordBatchTimerStart({
+          clientSessionId,
+          quest,
+          cityIds: eligibleCityIds,
+        });
         set({
           activeBatchCampaign: {
             questId,
@@ -1035,6 +1093,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             startTime: Date.now(),
             pausedMs: 0,
             pauseStartedAt: null,
+            clientSessionId,
           },
         });
         return {
@@ -1072,6 +1131,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           const seg = now - t.pauseStartedAt;
           const cap = Math.max(0, QUEST_TIMER_MAX_PAUSE_MS - pausedCommitted);
           const add = Math.min(Math.max(0, seg), cap);
+          void recordWorkOp(t.clientSessionId, "timer_resume");
           set({
             activeBatchCampaign: {
               ...t,
@@ -1082,6 +1142,7 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           return true;
         }
         if (pausedCommitted >= QUEST_TIMER_MAX_PAUSE_MS) return false;
+        void recordWorkOp(t.clientSessionId, "timer_pause");
         set({ activeBatchCampaign: { ...t, pauseStartedAt: now } });
         return true;
       },
@@ -1094,6 +1155,10 @@ export const useQuestStore = create<QuestState & QuestActions>()(
             .getState()
             .addStamina(q.staminaCost * t.cityIds.length);
         }
+        void recordWorkOp(t.clientSessionId, "batch_cancel", {
+          staminaRefunded: (q?.staminaCost ?? 0) * t.cityIds.length,
+          status: "cancelled",
+        });
         set({ activeBatchCampaign: null });
         return true;
       },
@@ -1115,6 +1180,17 @@ export const useQuestStore = create<QuestState & QuestActions>()(
         );
 
         if (T_actual < T_floor) {
+          const voidMs = getQuestTimerEffectiveElapsedMs(
+            activeBatchCampaign,
+            now
+          );
+          void recordWorkOp(activeBatchCampaign.clientSessionId, "shoddy_void", {
+            status: "voided",
+            effectiveDurationMs: voidMs,
+            effectiveDurationMinutes:
+              Math.round((voidMs / 60_000) * 100) / 100,
+            standardMinutes: T_standard,
+          });
           useEmperorStore
             .getState()
             .addStamina(quest.staminaCost * activeBatchCampaign.cityIds.length);
@@ -1226,6 +1302,23 @@ export const useQuestStore = create<QuestState & QuestActions>()(
           `【集团军】集群点卯《${quest.title.replace(/^【[^】]+】\s*/, "").slice(0, 20)}》已覆盖 ${citiesCompleted} 座城池，功勋合计 +${totalMerit}。`,
           "decree",
           { emphasis: "goldFlash" }
+        );
+
+        const batchEffMs = getQuestTimerEffectiveElapsedMs(
+          activeBatchCampaign,
+          now
+        );
+        void recordWorkOp(
+          activeBatchCampaign.clientSessionId,
+          "batch_complete",
+          {
+            status: "completed",
+            effectiveDurationMs: batchEffMs,
+            effectiveDurationMinutes:
+              Math.round((batchEffMs / 60_000) * 100) / 100,
+            standardMinutes: T_standard,
+            citiesCompleted,
+          }
         );
 
         set({ activeBatchCampaign: null });

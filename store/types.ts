@@ -144,6 +144,58 @@ export interface EventLog {
   revert?: EventLogRevert;
 }
 
+export type QuestWorkOperationKind =
+  | "timer_start"
+  | "timer_pause"
+  | "timer_resume"
+  | "timer_cancel"
+  | "complete"
+  | "sop_complete"
+  | "shoddy_void"
+  | "batch_start"
+  | "batch_complete"
+  | "batch_cancel";
+
+export interface QuestWorkOperation {
+  kind: QuestWorkOperationKind;
+  /** ISO-8601 时间戳 */
+  at: string;
+  [key: string]: unknown;
+}
+
+export type QuestWorkSessionStatus =
+  | "open"
+  | "completed"
+  | "cancelled"
+  | "voided";
+
+export type QuestWorkSessionKind = "single" | "batch";
+
+/** 勤政录 · 政务工时（Supabase quest_work_session 行） */
+export interface QuestWorkSessionRecord {
+  id?: string;
+  clientSessionId: string;
+  questId: string;
+  questTitle: string;
+  cityId: string | null;
+  cityDisplay: string | null;
+  affiliation: QuestAffiliation | null;
+  period: QuestPeriod | null;
+  sessionKind: QuestWorkSessionKind;
+  status: QuestWorkSessionStatus;
+  operations: QuestWorkOperation[];
+  batchCityIds: string[] | null;
+  batchCityCount: number | null;
+  standardMinutes: number | null;
+  effectiveDurationMs: number | null;
+  effectiveDurationMinutes: number | null;
+  firstActionAt: string | null;
+  lastActionAt: string | null;
+  decreeClientLogId: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 /** 户部「个人支用」资产分类（顶栏户部司帑 · 人民币 1:1 映射国库银两） */
 export type PersonalExpenseCategory =
   | "imperial_provisions"

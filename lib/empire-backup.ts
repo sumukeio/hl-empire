@@ -17,7 +17,9 @@ import {
 } from "@/store/grand-tour-store";
 import type { GrandTour, GrandTourAtlas } from "@/store/types";
 
-export const EMPIRE_BACKUP_VERSION = 1 as const;
+export const EMPIRE_BACKUP_VERSION = 2 as const;
+
+const SUPPORTED_BACKUP_VERSIONS = [1, 2] as const;
 
 function parseEventLogType(v: unknown): EventLogType {
   if (v === "decree" || v === "battle" || v === "treasury" || v === "info") {
@@ -159,6 +161,41 @@ function collectGrandTourBackup(): EmpireBackupV1["grandTour"] {
   };
 }
 
+/** Supabase `user_empire.grand_tour_json` 载荷 */
+export function collectGrandTourCloudJson(): NonNullable<
+  EmpireBackupV1["grandTour"]
+> {
+  return collectGrandTourBackup()!;
+}
+
+export function applyGrandTourCloudJson(json: unknown): void {
+  if (!json || typeof json !== "object") return;
+  const g = json as Record<string, unknown>;
+  const atlasRaw = g.atlas;
+  if (!atlasRaw || typeof atlasRaw !== "object") return;
+  const a = atlasRaw as Record<string, unknown>;
+  const seed = buildSeedAtlas();
+  useGrandTourStore.getState().replaceAtlasFromBackup({
+    provinceGroups: Array.isArray(a.provinceGroups)
+      ? (a.provinceGroups as GrandTourAtlas["provinceGroups"])
+      : seed.provinceGroups,
+    regions: Array.isArray(a.regions)
+      ? (a.regions as GrandTourAtlas["regions"])
+      : seed.regions,
+    meals: Array.isArray(a.meals) ? (a.meals as GrandTourAtlas["meals"]) : [],
+    lodges: Array.isArray(a.lodges) ? (a.lodges as GrandTourAtlas["lodges"]) : [],
+    transports: Array.isArray(a.transports)
+      ? (a.transports as GrandTourAtlas["transports"])
+      : [],
+  });
+  useGrandTourStore.getState().replaceToursFromBackup(
+    Array.isArray(g.tours) ? (g.tours as GrandTour[]) : [],
+    g.activeTourId === null || typeof g.activeTourId === "string"
+      ? (g.activeTourId as string | null)
+      : null
+  );
+}
+
 export function collectEmpireBackup(): EmpireBackupV1 {
   const e = useEmperorStore.getState();
   return {
@@ -244,8 +281,16 @@ export function parseEmpireBackupJson(
     return { ok: false, error: "密函根节点须为 JSON 对象。" };
   }
   const root = parsed as Record<string, unknown>;
-  if (root.version !== EMPIRE_BACKUP_VERSION) {
-    return { ok: false, error: `不支持的密函版本（当前仅支持 version=${EMPIRE_BACKUP_VERSION}）。` };
+  const version = root.version;
+  if (
+    version !== 1 &&
+    version !== 2 &&
+    version !== EMPIRE_BACKUP_VERSION
+  ) {
+    return {
+      ok: false,
+      error: `不支持的密函版本（支持 version=${SUPPORTED_BACKUP_VERSIONS.join("、")}）。`,
+    };
   }
   const em = root.emperor;
   if (!em || typeof em !== "object") {

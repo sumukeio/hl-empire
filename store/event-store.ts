@@ -2,9 +2,14 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { applyEventLogRevert } from "@/lib/apply-event-log-revert";
+import {
+  removeEventLogFromCloud,
+  syncEventLogToCloud,
+} from "@/lib/activity-journal-bridge";
 import type { EventLog, EventLogRevert, EventLogType } from "./types";
 
-const MAX_PERSISTED_LOGS = 80;
+/** 本地缓存上限；云端 event_log 表永久保留 */
+const MAX_LOCAL_CACHED_LOGS = 500;
 
 function newLogId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -46,6 +51,8 @@ export interface EventActions {
   clearLogs: () => void;
   /** 撤回单条邸报并执行其 `revert` 回滚（若有） */
   revertLog: (id: string) => RevertLogResult;
+  /** 从 Supabase 拉取后整表替换（登录/bootstrap） */
+  replaceLogsFromCloud: (logs: EventLog[]) => void;
 }
 
 export const useEventStore = create<EventState & EventActions>()(
@@ -64,15 +71,19 @@ export const useEventStore = create<EventState & EventActions>()(
             ...(meta?.revert ? { revert: meta.revert } : {}),
           };
           const next = [entry, ...s.logs];
-          return { logs: next.slice(0, MAX_PERSISTED_LOGS) };
+          syncEventLogToCloud(entry);
+          return { logs: next.slice(0, MAX_LOCAL_CACHED_LOGS) };
         }),
       clearLogs: () => set({ logs: [] }),
+      replaceLogsFromCloud: (logs) =>
+        set({ logs: logs.slice(0, MAX_LOCAL_CACHED_LOGS) }),
       revertLog: (id) => {
         const log = get().logs.find((l) => l.id === id);
         if (!log) return { ok: false, reason: "not_found" };
         if (!log.revert) return { ok: false, reason: "no_revert" };
         const r = applyEventLogRevert(log);
         if (!r.ok) return { ok: false, reason: r.reason };
+        removeEventLogFromCloud(id);
         set((s) => ({ logs: s.logs.filter((l) => l.id !== id) }));
         return { ok: true };
       },

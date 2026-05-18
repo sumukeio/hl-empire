@@ -5,6 +5,7 @@ import { Flame, RotateCcw, ScrollText, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatBeijingDateTime, isBeijingToday } from "@/lib/beijing-time";
 import { cn } from "@/lib/utils";
 import type { EventLog, EventLogType } from "@/store/types";
 import { useEventStore } from "@/store";
@@ -22,14 +23,6 @@ function typeIcon(type: EventLogType) {
     default:
       return <ScrollText className="h-3.5 w-3.5 text-muted-foreground" />;
   }
-}
-
-function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
 }
 
 function revertHint(
@@ -68,7 +61,13 @@ export function EventLogPanel({ className }: EventLogPanelProps) {
   const [pulse, setPulse] = useState(false);
   const [revertBanner, setRevertBanner] = useState<string | null>(null);
 
-  const visible = useMemo(() => logs.slice(0, MAX_SHOW), [logs]);
+  const visible = useMemo(
+    () =>
+      logs
+        .filter((l) => isBeijingToday(l.time))
+        .slice(0, MAX_SHOW),
+    [logs]
+  );
 
   const revertableCount = useMemo(
     () => visible.filter((l) => Boolean(l.revert)).length,
@@ -114,12 +113,14 @@ export function EventLogPanel({ className }: EventLogPanelProps) {
             八百里加急
           </CardTitle>
           <p className="text-[10px] leading-snug text-muted-foreground">
-            仅<strong className="text-imperial-gold/90">军机点卯</strong>
-            且仍可对上勘合状态的条目显示金色「撤回」；校准国库、岁入等无游戏回滚数据。
+            仅展示<strong className="text-imperial-gold/90">北京时间今日</strong>
+            邸报；时间格式为年月日时分秒。往期与政务工时明细请至
+            <strong className="text-imperial-gold/90">勤政录</strong>查阅。
             <span className="mt-0.5 block text-muted-foreground/85">
-              本列表可撤回：<span className="tabular-nums text-foreground">{revertableCount}</span>{" "}
+              本列表可撤回：
+              <span className="tabular-nums text-foreground">{revertableCount}</span>{" "}
               条。是否可撤回<strong className="text-slate-300">不看时间</strong>
-              （没有「几分钟后就不能撤」）；跨日后当日勘合已清空时，带「撤回」的军机邸报仍显示按钮，但点击会提示无法回滚。
+              ；跨日后当日勘合已清空时，带「撤回」的军机邸报仍显示按钮，但点击会提示无法回滚。
             </span>
           </p>
         </div>
@@ -129,7 +130,7 @@ export function EventLogPanel({ className }: EventLogPanelProps) {
           size="icon"
           className="h-10 w-10 shrink-0 text-muted-foreground hover:text-destructive"
           onClick={() => clearLogs()}
-          title="清空邸报"
+          title="清空本地邸报缓存"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -149,7 +150,7 @@ export function EventLogPanel({ className }: EventLogPanelProps) {
         ) : null}
         {visible.length === 0 ? (
           <p className="py-4 text-center text-xs text-muted-foreground">
-            暂无邸报。勘合城池或点卯军机后在此播报。
+            今日（北京时间）暂无邸报。勘合城池或点卯军机后在此播报。
           </p>
         ) : (
           <ul className="max-h-[min(52vh,20rem)] space-y-2 overflow-y-auto sm:max-h-[16rem]">
@@ -177,7 +178,7 @@ export function EventLogPanel({ className }: EventLogPanelProps) {
                     {log.message}
                   </p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
-                    <span>{formatTime(log.time)}</span>
+                    <span className="tabular-nums">{formatBeijingDateTime(log.time)}</span>
                     {log.cityName ? (
                       <span className="rounded border border-imperial-gold/30 bg-imperial-gold/10 px-1.5 py-px text-[9px] text-imperial-gold">
                         {log.cityName}

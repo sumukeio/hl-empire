@@ -40,6 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { mobileStickyHeader, touchTargetInline } from "@/lib/mobile-ui";
 import { cn } from "@/lib/utils";
 import { parseBulkCityNamesFromText } from "@/lib/parse-bulk-city-names";
 import {
@@ -403,13 +404,21 @@ export function SettingsView() {
   return (
     <>
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="border-b border-imperial-gold/15 bg-slate-950/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
+      <div
+        className={cn(
+          mobileStickyHeader,
+          "border-imperial-gold/15 bg-slate-950/95"
+        )}
+      >
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6 sm:py-4">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="gap-2 border-primary/40 text-primary hover:bg-primary/10"
+            className={cn(
+              "gap-2 border-primary/40 text-primary hover:bg-primary/10",
+              touchTargetInline
+            )}
             asChild
           >
             <Link href="/dashboard">
@@ -421,7 +430,10 @@ export function SettingsView() {
             type="button"
             variant="outline"
             size="sm"
-            className="gap-2 border-border text-muted-foreground hover:bg-muted/30"
+            className={cn(
+              "gap-2 border-border text-muted-foreground hover:bg-muted/30",
+              touchTargetInline
+            )}
             onClick={() => void onLogout()}
           >
             <LogOut className="h-4 w-4" />
@@ -431,7 +443,10 @@ export function SettingsView() {
             type="button"
             variant="outline"
             size="sm"
-            className="order-last gap-2 border-imperial-gold/45 text-imperial-gold hover:bg-imperial-gold/10 sm:order-none"
+            className={cn(
+              "order-last gap-2 border-imperial-gold/45 text-imperial-gold hover:bg-imperial-gold/10 sm:order-none",
+              touchTargetInline
+            )}
             asChild
           >
             <Link href="/settings/handbook">
@@ -452,22 +467,31 @@ export function SettingsView() {
 
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
         <Tabs defaultValue="territory" className="flex flex-col gap-4">
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-slate-900/80 p-1 sm:w-auto">
+          <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-900/80 p-1 sm:flex-wrap sm:overflow-visible sm:w-auto">
             <TabsTrigger
               value="territory"
-              className="data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
+              className={cn(
+                "shrink-0 data-[state=active]:bg-primary/15 data-[state=active]:text-primary",
+                touchTargetInline
+              )}
             >
               图志司
             </TabsTrigger>
             <TabsTrigger
               value="council"
-              className="data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
+              className={cn(
+                "shrink-0 data-[state=active]:bg-primary/15 data-[state=active]:text-primary",
+                touchTargetInline
+              )}
             >
               枢密院
             </TabsTrigger>
             <TabsTrigger
               value="archive"
-              className="data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
+              className={cn(
+                "shrink-0 data-[state=active]:bg-primary/15 data-[state=active]:text-primary",
+                touchTargetInline
+              )}
             >
               帝国档案
             </TabsTrigger>

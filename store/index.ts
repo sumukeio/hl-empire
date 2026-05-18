@@ -48,6 +48,7 @@ export type {
   ActiveQuestTimer,
 } from "./quest-store";
 export { useEventStore } from "./event-store";
+export { useWorkSessionStore } from "./work-session-store";
 export {
   useGrandTourStore,
   buildSeedAtlas,
@@ -78,6 +79,11 @@ export type {
   RecordExpenseInput,
   EventLog,
   EventLogType,
+  QuestWorkOperation,
+  QuestWorkOperationKind,
+  QuestWorkSessionRecord,
+  QuestWorkSessionStatus,
+  QuestWorkSessionKind,
   SubmitCityReportResult,
   SubmitDailyReportResult,
   TourItemKind,

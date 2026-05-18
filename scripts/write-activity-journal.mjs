@@ -1,4 +1,24 @@
-"use client";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const b64 = JSON.parse(
+  readFileSync(join(root, "scripts/activity-strings.b64.json"), "utf8")
+);
+const S = Object.fromEntries(
+  Object.entries(b64).map(([k, v]) => [k, Buffer.from(v, "base64").toString("utf8")])
+);
+const j = (v) => JSON.stringify(v);
+
+const TYPE_LABEL = {
+  decree: S.decree,
+  treasury: S.treasury,
+  battle: S.battle,
+  info: S.info,
+};
+
+const content = `"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Download, ScrollText } from "lucide-react";
@@ -40,7 +60,7 @@ import type {
 } from "@/store/types";
 import { useEventStore, useWorkSessionStore } from "@/store";
 
-const RETENTION_NOTE = "邸报与政务工时已同步云端永久保留；本页可按日/周/月筛选导出。顶栏「八百里加急」默认仅展示北京时间今日邸报，不含政务工时明细。邸报在本地另保留最近约 80 条环形缓存，跨度较大时摘录可能不全；重要节点请定期导出，或使用造办处「帝国密函」全量备份。";
+const RETENTION_NOTE = ${j(S.RETENTION)};
 
 function sessionTimestampMs(s: QuestWorkSessionRecord): number {
   const raw = s.lastActionAt ?? s.firstActionAt;
@@ -59,12 +79,7 @@ function filterSessionsByRange(
   });
 }
 
-const TYPE_LABEL: Record<EventLogType, string> = {
-  "decree": "朱批 / 诏令",
-  "treasury": "户部 / 内务",
-  "battle": "边情 / 战报",
-  "info": "起居注"
-};
+const TYPE_LABEL: Record<EventLogType, string> = ${JSON.stringify(TYPE_LABEL, null, 2)};
 
 function typeBadgeClass(t: EventLogType): string {
   switch (t) {
@@ -105,19 +120,19 @@ function RangePickers({
     >
       <TabsList className="grid h-auto w-full grid-cols-3 gap-1 bg-slate-900/80 p-1">
         <TabsTrigger value="day" className={touchTargetInline}>
-          日
+          \u65e5
         </TabsTrigger>
         <TabsTrigger value="week" className={touchTargetInline}>
-          周
+          \u5468
         </TabsTrigger>
         <TabsTrigger value="month" className={touchTargetInline}>
-          月
+          \u6708
         </TabsTrigger>
       </TabsList>
 
       <TabsContent value="day" className="mt-3 space-y-2">
         <Label htmlFor="activity-day" className="text-xs text-muted-foreground">
-          选择自然日（北京时间）
+          ${S.dayLabel}
         </Label>
         <input
           id="activity-day"
@@ -133,7 +148,7 @@ function RangePickers({
 
       <TabsContent value="week" className="mt-3 space-y-2">
         <Label htmlFor="activity-week" className="text-xs text-muted-foreground">
-          选择一周内任意一天 · 展示该日所在「周一至周日」整周
+          ${S.weekLabel}
         </Label>
         <input
           id="activity-week"
@@ -149,7 +164,7 @@ function RangePickers({
 
       <TabsContent value="month" className="mt-3 space-y-2">
         <Label htmlFor="activity-month" className="text-xs text-muted-foreground">
-          选择自然月
+          ${S.monthLabel}
         </Label>
         <input
           id="activity-month"
@@ -175,7 +190,7 @@ function RangeSummaryBar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
-      <span className="text-xs text-muted-foreground">当前范围</span>
+      <span className="text-xs text-muted-foreground">${S.currentRange}</span>
       <span className="rounded-md border border-imperial-gold/30 bg-imperial-gold/10 px-2 py-1 text-xs font-medium text-imperial-gold">
         {rangeHuman}
       </span>
@@ -201,7 +216,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
     const parts = ymd.split("-");
     setDayPick(ymd);
     setWeekPick(ymd);
-    setMonthPick(`${parts[0]}-${parts[1]}`);
+    setMonthPick(\`\${parts[0]}-\${parts[1]}\`);
     setMounted(true);
   }, []);
 
@@ -235,7 +250,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
 
   const counts = useMemo(() => countLogsByType(filtered), [filtered]);
 
-  const rangeHuman = range ? buildRangeHumanLabel(range) : "—";
+  const rangeHuman = range ? buildRangeHumanLabel(range) : "\u2014";
   const rangeFileTag = range ? buildRangeLabelLocal(range) : "unknown";
 
   const exportMd = () => {
@@ -246,7 +261,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
       note: RETENTION_NOTE,
     });
     downloadTextFile(
-      `hanling-勤政录-${rangeFileTag}.md`,
+      \`hanling-\u52e4\u653f\u5f55-\${rangeFileTag}.md\`,
       body,
       "text/markdown"
     );
@@ -263,7 +278,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
     const payload = JSON.parse(base) as Record<string, unknown>;
     payload.workSessions = filteredSessions;
     downloadTextFile(
-      `hanling-勤政录-${rangeFileTag}.json`,
+      \`hanling-\u52e4\u653f\u5f55-\${rangeFileTag}.json\`,
       JSON.stringify(payload, null, 2),
       "application/json"
     );
@@ -288,7 +303,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
         <CardHeader className="space-y-1 pb-2">
           <CardTitle className="flex items-center gap-2 text-base text-imperial-gold">
             <ScrollText className="h-5 w-5 shrink-0" />
-            勤政录（起居注）
+            ${S.title}
           </CardTitle>
           <p className="text-xs leading-relaxed text-muted-foreground">
             {RETENTION_NOTE}
@@ -301,10 +316,10 @@ export function ActivityJournalView({ className }: { className?: string }) {
           >
             <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-slate-900/80 p-1">
               <TabsTrigger value="docket" className={touchTargetInline}>
-                邸报摘录
+                ${S.docket}
               </TabsTrigger>
               <TabsTrigger value="work" className={touchTargetInline}>
-                政务工时
+                ${S.work}
               </TabsTrigger>
             </TabsList>
 
@@ -312,7 +327,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
               {rangePickers}
               <RangeSummaryBar
                 rangeHuman={rangeHuman}
-                countLabel={`共 ${filtered.length} 条`}
+                countLabel={\`\u5171 \${filtered.length} \u6761\`}
               />
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <Button
@@ -327,7 +342,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
                   onClick={exportMd}
                 >
                   <Download className="h-4 w-4" />
-                  导出 Markdown
+                  ${S.exportMd}
                 </Button>
                 <Button
                   type="button"
@@ -341,19 +356,19 @@ export function ActivityJournalView({ className }: { className?: string }) {
                   onClick={exportJson}
                 >
                   <Download className="h-4 w-4" />
-                  导出 JSON
+                  ${S.exportJson}
                 </Button>
               </div>
             </TabsContent>
 
             <TabsContent value="work" className="mt-4 space-y-4">
               <p className="text-xs leading-relaxed text-muted-foreground">
-                记录军机处与集团军每次点卯的开表、暂停、撤点卯与呈报等动作；登录后归档在云端，可按日/周/月筛选。
+                ${S.workHint}
               </p>
               {rangePickers}
               <RangeSummaryBar
                 rangeHuman={rangeHuman}
-                countLabel={`共 ${filteredSessions.length} 条办理周期`}
+                countLabel={\`\u5171 \${filteredSessions.length} \u6761\u529e\u7406\u5468\u671f\`}
               />
               <Button
                 type="button"
@@ -367,7 +382,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
                 onClick={exportJson}
               >
                 <Download className="h-4 w-4" />
-                导出 JSON（含工时）
+                ${S.exportJsonWork}
               </Button>
             </TabsContent>
           </Tabs>
@@ -378,7 +393,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
         <>
           <Card className="border-border/80 bg-card/30">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-foreground">摘要</CardTitle>
+              <CardTitle className="text-sm text-foreground">${S.summary}</CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="grid gap-2 text-xs sm:grid-cols-2">
@@ -399,11 +414,11 @@ export function ActivityJournalView({ className }: { className?: string }) {
 
           <div className="space-y-4">
             <h2 className="text-sm font-semibold text-foreground">
-              时间线（按日折叠）
+              ${S.timeline}
             </h2>
             {grouped.length === 0 ? (
               <p className="rounded-lg border border-dashed border-imperial-gold/25 bg-slate-950/40 px-4 py-8 text-center text-sm text-muted-foreground">
-                该范围内暂无邸报。
+                ${S.noDocket}
               </p>
             ) : (
               grouped.map(({ day, logs: dayLogs }) => (
@@ -415,7 +430,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
                     <CardTitle className="text-sm font-semibold tracking-tight text-imperial-gold/95">
                       {day}
                       <span className="ml-2 text-xs font-normal text-muted-foreground">
-                        {dayLogs.length} 条
+                        {dayLogs.length} \u6761
                       </span>
                     </CardTitle>
                   </CardHeader>
@@ -459,10 +474,10 @@ export function ActivityJournalView({ className }: { className?: string }) {
         </>
       ) : (
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-foreground">政务工时明细</h2>
+          <h2 className="text-sm font-semibold text-foreground">${S.workDetail}</h2>
           {filteredSessions.length === 0 ? (
             <p className="rounded-lg border border-dashed border-imperial-gold/25 bg-slate-950/40 px-4 py-8 text-center text-sm text-muted-foreground">
-              该范围内暂无政务工时。请在军机处或集团军完成点卯后查看。
+              ${S.noWork}
             </p>
           ) : (
             filteredSessions.map((session) => (
@@ -478,12 +493,12 @@ export function ActivityJournalView({ className }: { className?: string }) {
                     </span>
                   </CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {session.cityDisplay ?? "—"}
+                    {session.cityDisplay ?? "\u2014"}
                     {session.sessionKind === "batch" && session.batchCityCount
-                      ? ` · ${session.batchCityCount} 城`
+                      ? \` \u00b7 \${session.batchCityCount} \u57ce\`
                       : ""}
                     {session.effectiveDurationMinutes != null
-                      ? ` · 有效 ${session.effectiveDurationMinutes} 分`
+                      ? \` \u00b7 \u6709\u6548 \${session.effectiveDurationMinutes} \u5206\`
                       : ""}
                   </p>
                 </CardHeader>
@@ -493,7 +508,7 @@ export function ActivityJournalView({ className }: { className?: string }) {
                       const opMs = new Date(op.at).getTime();
                       return (
                         <li
-                          key={`${session.clientSessionId}-${idx}`}
+                          key={\`\${session.clientSessionId}-\${idx}\`}
                           className="flex flex-col gap-1 px-4 py-3 text-xs sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:py-2.5"
                         >
                           <span className="font-medium text-foreground">
@@ -521,11 +536,16 @@ export function ActivityJournalView({ className }: { className?: string }) {
 export function ActivityJournalPageChrome() {
   return (
     <MobileSubpageShell
-      title="勤政录"
-      subtitle="邸报 · 工时 · 导出"
+      title=${j(S.pageTitle)}
+      subtitle=${j(S.pageSub)}
       maxWidthClass="max-w-3xl"
     >
       <ActivityJournalView />
     </MobileSubpageShell>
   );
 }
+`;
+
+const outPath = join(root, "components/dashboard/activity-journal-view.tsx");
+writeFileSync(outPath, content, "utf8");
+console.log("wrote", outPath, content.length);
